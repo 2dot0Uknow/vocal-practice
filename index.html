@@ -26,9 +26,10 @@ h1{font-size:30px}h2{font-size:22px;margin-bottom:10px}
 .sub{color:var(--muted);font-size:14px;margin:4px 0 0}
 section{display:none}section.on{display:block}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:20px;box-shadow:0 1px 2px rgb(31 42 68/.04),0 6px 20px rgb(31 42 68/.05);padding:14px;margin-bottom:12px}
-.ex{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.ex .t{flex:1 1 200px}.ex b{display:block;font-weight:600}.ex small{color:var(--muted)}
+.ex{display:flex;align-items:center;gap:8px}
+.ex .t{flex:1 1 0}.ex b{display:block;font-weight:600}.ex small{color:var(--muted)}
 button,.btn{font:600 16px Inter,sans-serif;min-height:46px;padding:0 16px;border-radius:14px;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+button.ico{flex:none;width:46px;padding:0}
 button.pri{background:var(--pri);border-color:var(--pri);color:light-dark(#fff,#0f1828)}
 button.ghost{background:transparent}
 button:disabled{opacity:.5}
@@ -254,7 +255,7 @@ function renderHist(h=store.get('vp_hist',[])){
   const left=h.length-shown;$('moreBtn').hidden=left<=0;if(left>0)$('moreBtn').textContent=`Load more (${Math.min(6,left)} of ${left} left)`}
 $('moreBtn').onclick=()=>{shown+=6;renderHist()};
 function renderLib(){
-  $('list').innerHTML=exs.map((e,i)=>`<div class="card ex"><div class="t"><b>${esc(e.name)}</b><small>${esc(desc(e))}</small></div><button class="pri" data-i="${i}" data-a="p">Practice</button><button class="ghost" data-i="${i}" data-a="e">Edit</button></div>`).join('')||'<p class="note">No exercises yet. Tap "Add exercises".</p>';
+  $('list').innerHTML=exs.map((e,i)=>`<div class="card ex"><div class="t"><b>${esc(e.name)}</b><small>${esc(desc(e))}</small></div><button class="pri ico" data-i="${i}" data-a="p" aria-label="Practice ${esc(e.name)}" title="Practice"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z" fill="currentColor"/></svg></button><button class="ghost ico" data-i="${i}" data-a="e" aria-label="Edit ${esc(e.name)}" title="Edit"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19.5 8.5a2.1 2.1 0 0 0-3-3L5 17z"/><path d="M14.5 7.5l3 3"/></svg></button></div>`).join('')||'<p class="note">No exercises yet. Tap "Add exercises".</p>';
   $('list').querySelectorAll('button').forEach(b=>b.onclick=()=>{const e=exs[+b.dataset.i];b.dataset.a=='p'?(queue=[],openPrac(e)):openEdit(e)});
   $('allBtn').disabled=!exs.length;
   const h=store.get('vp_hist',[]);
