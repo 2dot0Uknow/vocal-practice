@@ -357,7 +357,7 @@ function loop(){if(!run)return;an.getFloatTimeDomainData(buf);const now=clk();
   const fr={t:now-Lin,m:null,tr};
   if(p){fr.m=fToM(p.f);fr.c=p.c;Object.assign(fr,spectral(p.f))}
   if(tr){/* smooth over the flutter: median of the last ~0.15 s, and bridge short dropouts */
-    if(fr.m!=null)recent.push({t:now,m:fr.m});recent=recent.filter(x=>now-x.t<.15);if(recent.length)fr.m=med(recent.map(x=>x.m))}else recent=[];
+    if(fr.m!=null)recent.push({t:now,m:fr.m});const win=tg?Math.min(.15,Math.max(.06,(tg.t1-tg.t0)*.3)):.15;recent=recent.filter(x=>now-x.t<win);if(recent.length)fr.m=med(recent.map(x=>x.m))}else recent=[];
   frames.push(fr);
   $('rTarget').textContent=tg?nm(tg.m):'–';$('rSyl').textContent=tg&&tg.syl?tg.syl:'–';
   if(fr.m!=null){$('rNote').textContent=nm(fr.m);if(tg){const c=err(fr.m,tg.m);$('rCents').textContent=(c>0?'+':'')+Math.round(c)+' cents';$('needle').style.left=`calc(${50+Math.max(-50,Math.min(50,c/2))}% - 2px)`}}
@@ -383,10 +383,16 @@ function draw(now){if(!seq||!seq.targets.length)return;const d=devicePixelRatio|
 const med=a=>{const s=[...a].sort((x,y)=>x-y),n=s.length;return n?(n%2?s[n>>1]:(s[n/2-1]+s[n/2])/2):null};
 const mean=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:0;
 const sd=a=>{const m=mean(a);return Math.sqrt(mean(a.map(x=>(x-m)**2)))};
+/* Match voice frames to notes. Timing isn't scored, so each note's window stretches to allow
+   for coming in late, and frames near a boundary go to whichever neighbouring note they're closer to in pitch. */
+function scoreNotes(T,frames){return T.map((x,i)=>{const d=x.t1-x.t0,w0=x.t0+Math.min(.35*d,.06),w1=x.t1+Math.min(.3,.6*d),pv=T[i-1],nx=T[i+1];
+  const fs=frames.filter(f=>{if(f.m==null||f.t<w0||f.t>w1)return false;const e=Math.abs(err(f.m,x.m));if(e>450)return false;
+    if(nx&&nx.m!=x.m&&f.t>x.t1-.03&&Math.abs(err(f.m,nx.m))<e)return false;
+    if(pv&&pv.m!=x.m&&f.t<x.t0+.2&&Math.abs(err(f.m,pv.m))<e)return false;return true});
+  if(fs.length<3)return {...x,miss:true};const cs=fs.map(f=>err(f.m,x.m)),m=med(cs);
+  return {...x,med:m,sd:sd(cs.filter(c=>Math.abs(c-m)<150)),clar:mean(fs.map(f=>f.c)),ring:mean(fs.map(f=>f.ring))}})}
 function report(e){
-  const res=seq.targets.map(x=>{const w0=x.t0+(x.t1-x.t0)*.35,w1=x.t1+.12,fs=frames.filter(f=>f.m!=null&&f.t>=w0&&f.t<=w1);
-    if(fs.length<4)return {...x,miss:true};const cs=fs.map(f=>err(f.m,x.m)),m=med(cs);
-    return {...x,med:m,sd:sd(cs.filter(c=>Math.abs(c-m)<150)),clar:mean(fs.map(f=>f.c)),ring:mean(fs.map(f=>f.ring))}});
+  const res=scoreNotes(seq.targets,frames);
   const ok=res.filter(r=>!r.miss),tot=res.length;
   const inT=ok.filter(r=>Math.abs(r.med)<=25).length,pct=tot?Math.round(inT/tot*100):0;
   const tone=ok.filter(r=>!r.trill),allTr=ok.length&&!tone.length;
