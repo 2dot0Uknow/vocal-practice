@@ -6,32 +6,33 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>Vocal Practice</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-/* VOICE: a quiet practice room — focused, encouraging, no clutter
-   IDEA: a lacquered piano lid with a red "recording" light
-   PICTURE: the live pitch roll — target bars like keys, your voice as a glowing line
-   COLOUR and TYPE: ivory / piano-black, coral record-red accent, teal for in-tune; Sora + Inter
-   LAYOUT: one phone column: title, roll, controls; report stacks below */
-:root{color-scheme:light dark;--bg:light-dark(#f6f1e7,#12100e);--ink:light-dark(#1a1714,#f3ede2);--panel:light-dark(#fffaf1,#1d1a17);--line:light-dark(#e2d8c6,#2f2a25);--muted:light-dark(#6c6256,#a59b8d);--rec:#ff4d3d;--ok:#16a38c;--warn:#e39a2d;--bar:light-dark(#d9cdb8,#3a342d)}
+/* VOICE: a sunny practice room: light, warm, confident, on your side
+   IDEA: a morning sky; every note you sing is a step on a path
+   PICTURE: the pitch roll as soft sky-blue stepping stones, your voice a bright line across them
+   COLOUR and TYPE: warm white, deep-blue ink, confident sky blue, sunrise gold; green = landed, gold = close, lavender = exploring. Nunito + Inter
+   LAYOUT: one phone column; journey card on top, roll in the middle, controls below */
+:root{color-scheme:light dark;--bg:light-dark(#fdfbf7,#0f1828);--ink:light-dark(#1f2a44,#eef2fa);--panel:light-dark(#ffffff,#172338);--line:light-dark(#ebe7df,#26344d);--muted:light-dark(#5f6b80,#a3aec2);
+  --pri:light-dark(#2f6fe4,#7ea6ff);--sun:#ffb547;--on:light-dark(#17a673,#3fd19a);--near:light-dark(#e9a91c,#f4c152);--far:light-dark(#9c88e8,#b5a6f5);--bar:light-dark(#e3ebf8,#24324b);--glow:light-dark(#fff1d6,#1b2740)}
 :root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
-*{box-sizing:border-box;min-width:0}
-body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 Inter,system-ui,sans-serif;overflow-x:clip;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+*{box-sizing:border-box;min-width:0}[hidden]{display:none!important}
+body{margin:0;background:linear-gradient(180deg,var(--glow) 0,var(--bg) 320px) no-repeat,var(--bg);color:var(--ink);font:16px/1.5 Inter,system-ui,sans-serif;overflow-x:clip;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
 .wrap{max-width:640px;margin:0 auto;padding:18px 16px 40px}
-h1,h2{font-family:Sora,Inter,sans-serif;line-height:1.08;margin:0;text-wrap:balance}
+h1,h2{font-family:Nunito,Inter,sans-serif;font-weight:800;line-height:1.08;margin:0;text-wrap:balance}
 h1{font-size:30px}h2{font-size:22px;margin-bottom:10px}
 .top{display:flex;align-items:center;gap:10px;margin-bottom:14px}
-.dot{width:12px;height:12px;border-radius:50%;background:var(--rec);flex:none;box-shadow:0 0 0 4px color-mix(in srgb,var(--rec) 20%,transparent)}
+.dot{width:30px;height:30px;border-radius:50%;flex:none;background:radial-gradient(circle at 40% 40%,#ffe39a,var(--sun) 60%,#ff9f3d);box-shadow:0 0 0 7px color-mix(in srgb,var(--sun) 22%,transparent),0 0 0 15px color-mix(in srgb,var(--sun) 10%,transparent)}
 .sub{color:var(--muted);font-size:14px;margin:4px 0 0}
 section{display:none}section.on{display:block}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:20px;box-shadow:0 1px 2px rgb(31 42 68/.04),0 6px 20px rgb(31 42 68/.05);padding:14px;margin-bottom:12px}
 .ex{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .ex .t{flex:1 1 200px}.ex b{display:block;font-weight:600}.ex small{color:var(--muted)}
-button,.btn{font:600 16px Inter,sans-serif;min-height:46px;padding:0 16px;border-radius:12px;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
-button.pri{background:var(--rec);border-color:var(--rec);color:#fff}
+button,.btn{font:600 16px Inter,sans-serif;min-height:46px;padding:0 16px;border-radius:14px;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+button.pri{background:var(--pri);border-color:var(--pri);color:light-dark(#fff,#0f1828)}
 button.ghost{background:transparent}
 button:disabled{opacity:.5}
-button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,.btn:focus-within{outline:3px solid var(--rec);outline-offset:2px}
+button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,.btn:focus-within{outline:3px solid var(--pri);outline-offset:2px}
 .row{display:flex;gap:8px;flex-wrap:wrap}.row>*{flex:1 1 auto}
 textarea,input,select{width:100%;font:16px Inter,sans-serif;padding:11px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
 textarea{min-height:150px;resize:vertical}
@@ -39,45 +40,49 @@ label{display:block;font-size:13px;color:var(--muted);margin:10px 0 4px}
 label.chk{display:flex;gap:8px;align-items:center;font-size:15px;color:var(--ink)}label.chk input{width:22px;height:22px}
 .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 10px}
 .note{font-size:13px;color:var(--muted);margin:8px 0 0}
-.warn{background:color-mix(in srgb,var(--warn) 18%,var(--panel));border-color:color-mix(in srgb,var(--warn) 45%,var(--line))}
+.warn{background:color-mix(in srgb,var(--pri) 7%,var(--panel));border-color:color-mix(in srgb,var(--pri) 18%,var(--line))}
+.journey{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));text-align:center;gap:6px}.journey b{display:block;font:800 28px/1.1 Nunito,sans-serif;color:var(--pri)}.journey span{font-size:13px;color:var(--muted)}
+.cheer{font:700 17px/1.4 Nunito,sans-serif;color:var(--on);margin:8px 0 0}
+ul.good li::marker{content:'✓  ';color:var(--on)}
 details summary{cursor:pointer;font-size:14px;color:var(--muted);padding:8px 0}
 .fig{position:relative;height:min(50vh,400px);border-radius:16px;overflow:hidden;background:var(--panel);border:1px solid var(--line)}
 .fig canvas{position:absolute;inset:0;width:100%;height:100%}
 .read{display:grid;grid-template-columns:1fr auto 1fr;align-items:end;margin:10px 2px;gap:8px}
-.big{font:700 40px/1 Sora,sans-serif}
-.sing{text-align:center}.sing .big{color:var(--rec);font-size:34px}
+.big{font:800 40px/1 Nunito,sans-serif}
+.sing{text-align:center}.sing .big{color:var(--pri);font-size:34px}
 .cents{font-size:15px;color:var(--muted);text-align:right}
 .meter{height:10px;border-radius:5px;background:var(--line);position:relative;margin:6px 0 12px}
 .meter i{position:absolute;top:-3px;width:4px;height:16px;border-radius:2px;background:var(--ink);left:50%;transition:left .08s}
-.meter:after{content:"";position:absolute;left:37.5%;width:25%;top:0;bottom:0;border-radius:5px;background:color-mix(in srgb,var(--ok) 35%,transparent)}
-.score{display:flex;align-items:baseline;gap:10px}.score .big{font-size:56px;color:var(--ok)}
+.meter:after{content:"";position:absolute;left:37.5%;width:25%;top:0;bottom:0;border-radius:5px;background:color-mix(in srgb,var(--on) 30%,transparent)}
+.score{display:flex;align-items:baseline;gap:10px}.score .big{font-size:58px;color:var(--pri)}
 .stat{display:grid;grid-template-columns:7.5em minmax(0,1fr) auto;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--line);font-size:15px}
 .stat .b{height:8px;border-radius:4px;background:var(--line);overflow:hidden}.stat .b i{display:block;height:100%;border-radius:4px}
 .stat span:last-child{white-space:nowrap;color:var(--muted);font-size:14px}
 .strip{display:flex;flex-wrap:wrap;gap:4px;margin:4px 0 10px}
 .rl{font-size:12px;color:var(--muted);width:100%}
-.cell{min-width:44px;padding:5px 4px;border-radius:8px;text-align:center;font-size:12px;line-height:1.25;color:#fff}
+.cell{min-width:44px;padding:5px 4px;border-radius:10px;text-align:center;font-size:12px;line-height:1.25;color:#fff}.cell.miss{background:var(--line);color:var(--muted)}
 .cell b{display:block;font-size:13px}
 ul.tips{padding-left:20px;margin:6px 0}ul.tips li{margin:6px 0}
 .hist{font-size:14px;color:var(--muted)}
 .ed h3{margin:0;font:600 17px Inter,sans-serif}
 .sum{color:var(--ink)!important}
 .busy{display:flex;gap:10px;align-items:center;font-size:14px;color:var(--muted);margin-top:10px}
-.spin{width:18px;height:18px;border-radius:50%;border:3px solid var(--line);border-top-color:var(--rec);animation:sp 1s linear infinite}
+.spin{width:18px;height:18px;border-radius:50%;border:3px solid var(--line);border-top-color:var(--pri);animation:sp 1s linear infinite}
 @keyframes sp{to{transform:rotate(1turn)}}
 @media(prefers-reduced-motion:reduce){.meter i{transition:none}.spin{animation:none}}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <div class="top"><span class="dot"></span><div><h1>Vocal Practice</h1><p class="sub">Your coach's exercises, played and scored</p></div></div>
+  <div class="top"><span class="dot"></span><div><h1>Vocal Practice</h1><p class="sub">Your coach's exercises, at your own pace</p></div></div>
 
   <section id="lib" class="on">
     <div id="micWarn" class="card warn" hidden></div>
-    <div class="card warn"><b>Wear headphones.</b> If the mic hears the piano, your scores get muddied.</div>
+    <div class="card journey" id="journey"></div>
+    <div class="card warn"><b>Tip:</b> headphones help the app hear just your voice, so your feedback stays accurate.</div>
     <div class="row" style="margin-bottom:12px"><button class="pri" id="newBtn">+ Add exercises</button><button id="allBtn">Practice all in order</button></div>
     <div id="list"></div>
-    <h2 style="margin-top:24px">Recent sessions</h2>
+    <h2 style="margin-top:24px">Your journey so far</h2>
     <div id="hist" class="hist">No sessions yet.</div>
   </section>
 
@@ -109,15 +114,17 @@ ul.tips{padding-left:20px;margin:6px 0}ul.tips li{margin:6px 0}
     <label for="micSel">Microphone</label>
     <div class="row" id="micRow"><select id="micSel" style="flex:1 1 200px"><option value="">Automatic (phone's choice)</option></select><button class="ghost" id="micScan" style="flex:0 0 auto">Find mics</button></div>
     <p class="note" id="micNow"></p>
-    <label for="sync">Sync: <span id="syncV"></span>. Slide right if the blocks reach the red line before you hear the piano</label><input id="sync" type="range" min="0" max="500" step="10" value="100" style="padding:0">
+    <label for="sync">Sync: <span id="syncV"></span>. Slide right if the blocks reach the blue line before you hear the piano</label><input id="sync" type="range" min="0" max="500" step="10" value="100" style="padding:0">
   </section>
 
   <section id="rep">
     <h2 id="repTitle">Session report</h2>
-    <div class="card"><div class="score"><span class="big" id="sPct">0%</span><span>of notes in tune<br><small class="sub" id="sSub"></small></span></div>
+    <div class="card"><div class="score"><span class="big" id="sPct">0%</span><span>of notes landed in tune<br><small class="sub" id="sSub"></small></span></div>
+      <p class="cheer" id="cheer"></p>
       <div id="stats" style="margin-top:10px"></div></div>
-    <div class="card"><b>What to work on</b><ul class="tips" id="tips"></ul></div>
-    <div class="card"><b>Note by note</b><p class="note">Cents off target (100 = a half step). Teal means within 25 cents, amber within 50, red beyond that.</p><div id="notesOut"></div></div>
+    <div class="card"><b>What went well</b><ul class="tips good" id="good"></ul></div>
+    <div class="card"><b>To try next time</b><ul class="tips" id="tips"></ul></div>
+    <div class="card"><b>Note by note</b><p class="note">How close each note landed, in cents (100 = a half step). Green is within 25, gold within 50, lavender is still finding it.</p><div id="notesOut"></div></div>
     <p class="note" id="trNote" hidden>Lip-trill notes are scored on pitch only, since the buzz makes tone readings unreliable.</p>
     <p class="note">Tone readings are estimates from the sound and vary with the vowel, mic and room. Use them to spot trends, not as a verdict.</p>
     <div class="row"><button class="pri" id="nextBtn" hidden>Next exercise</button><button id="againBtn">Go again</button><button class="ghost" data-go="lib">Done</button></div>
@@ -243,7 +250,10 @@ function renderLib(){
   $('list').querySelectorAll('button').forEach(b=>b.onclick=()=>{const e=exs[+b.dataset.i];b.dataset.a=='p'?(queue=[],openPrac(e)):openEdit(e)});
   $('allBtn').disabled=!exs.length;
   const h=store.get('vp_hist',[]);
-  $('hist').innerHTML=h.length?h.slice(0,12).map(x=>`<div class="stat" style="grid-template-columns:minmax(0,1fr) auto"><span>${esc(x.name)} <small>· ${esc(x.date)}</small></span><span>${esc(x.pct)}% in tune</span></div>`).join(''):'No sessions yet.';
+  {const day=t=>new Date(t).toDateString(),days=new Set(h.filter(x=>x.ts).map(x=>day(x.ts)));let st=0;const d=new Date();if(!days.has(day(d)))d.setDate(d.getDate()-1);while(days.has(day(d))){st++;d.setDate(d.getDate()-1)}
+   const wk=h.filter(x=>x.ts&&Date.now()-x.ts<7*864e5).length;
+   $('journey').innerHTML=`<div><b>${h.length}</b><span>sessions</span></div><div><b>${wk}</b><span>this week</span></div><div><b>${st}</b><span>day streak</span></div>`}
+  $('hist').innerHTML=h.length?h.slice(0,12).map(x=>`<div class="stat" style="grid-template-columns:minmax(0,1fr) auto"><span>${esc(x.name)} <small>· ${esc(x.date)}</small></span><span>${esc(x.pct)}% landed</span></div>`).join(''):'No sessions yet.';
   const micOK=window.isSecureContext&&navigator.mediaDevices&&navigator.mediaDevices.getUserMedia;
   $('micWarn').hidden=!!micOK;$('micWarn').textContent='The microphone can\'t be used here. Open this app from its https:// web address so it can hear you.';
 }
@@ -358,7 +368,7 @@ const showSync=()=>{$('sync').value=Math.round((L??.1)*1000);$('syncV').textCont
 $('sync').oninput=()=>{L=+$('sync').value/1000;store.set('vp_lat',L);showSync()};showSync();
 const cv=$('cv'),g2=cv.getContext('2d');
 const probe=document.createElement('span');probe.style.display='none';document.body.appendChild(probe);
-function readCol(){const g=v=>{probe.style.color=`var(${v})`;return getComputedStyle(probe).color};col={ink:g('--ink'),bar:g('--bar'),line:g('--line'),muted:g('--muted')}}
+function readCol(){const g=v=>{probe.style.color=`var(${v})`;return getComputedStyle(probe).color};col={ink:g('--ink'),bar:g('--bar'),line:g('--line'),muted:g('--muted'),pri:g('--pri'),on:g('--on'),near:g('--near'),far:g('--far')}}
 const ro=new ResizeObserver(()=>{const d=devicePixelRatio||1;cv.width=cv.clientWidth*d;cv.height=cv.clientHeight*d;readCol();draw(run?clk():0)});ro.observe(cv);
 function openPrac(e){cur=e;go('prac');$('pName').textContent=e.name+(queue.length?`  ·  ${queue.length} more after this`:'');$('pInfo').textContent=desc(e);seq=build(e,0);frames=[];$('goBtn').textContent='Start';$('rSyl').textContent=seq.targets[0]?.syl||'–';fit(0);draw(0)}
 function build(e,t0){const spb=60/e.bpm,notes=parsePat(e.pat),rs=rootsOf(e,notes),passes=e.vows.length?e.vows:[''],targets=[];const plays=[];let t=t0;
@@ -407,14 +417,14 @@ function draw(now){if(!seq||!seq.targets.length)return;const d=devicePixelRatio|
   g2.font='11px Inter,sans-serif';g2.textBaseline='middle';
   for(let m=Math.ceil(yLo);m<=yHi;m++){g2.fillStyle=col.line;g2.fillRect(0,Y(m),W,m%12==0?1.5:.5);if(m%12==0||m%12==7){g2.fillStyle=col.muted;g2.fillText(nm(m),6,Y(m)-7)}}
   const act=run?activeAt(now):null;
-  seq.targets.forEach(x=>{const x0=X(x.t0),x1=X(x.t1);if(x1<0||x0>W)return;g2.fillStyle=x==act?col.ink:col.bar;
+  seq.targets.forEach(x=>{const x0=X(x.t0),x1=X(x.t1);if(x1<0||x0>W)return;g2.fillStyle=x==act?col.pri:col.bar;
     g2.beginPath();g2.roundRect(x0+1,Y(x.m)-sh*.4,Math.max(4,x1-x0-2),sh*.8,4);g2.fill();
     if(x.syl&&x1-x0>26){g2.fillStyle=col.muted;g2.fillText(x.syl,x0+3,Y(x.m)-sh*.4-8)}});
-  g2.lineWidth=3;g2.lineCap='round';let prev=null;
+  g2.lineWidth=4;g2.lineCap='round';let prev=null;
   for(const f of frames){const ft=vt(f);if(ft<now-1.6||f.m==null){prev=null;continue}
     const tg=activeAt(ft)||seq.targets.reduce((a,b)=>Math.abs(b.t0-ft)<Math.abs(a.t0-ft)?b:a);const c=err(f.m,tg.m);
-    const pt=[X(ft),Y(tg.m+c/100)];if(prev){g2.strokeStyle=Math.abs(c)<=25?'#16a38c':Math.abs(c)<=50?'#e39a2d':'#ff4d3d';g2.beginPath();g2.moveTo(...prev);g2.lineTo(...pt);g2.stroke()}prev=pt}
-  g2.fillStyle='#ff4d3d';g2.fillRect(W*.3-1,0,2,H);
+    const pt=[X(ft),Y(tg.m+c/100)];if(prev){g2.strokeStyle=Math.abs(c)<=25?col.on:Math.abs(c)<=50?col.near:col.far;g2.beginPath();g2.moveTo(...prev);g2.lineTo(...pt);g2.stroke()}prev=pt}
+  g2.fillStyle=col.pri;g2.globalAlpha=.55;g2.fillRect(W*.3-1,0,2,H);g2.globalAlpha=1;
   if(!run){g2.fillStyle=col.muted;g2.font='14px Inter,sans-serif';g2.textAlign='center';g2.fillText('Press Start, then sing along with the piano',W/2,24);g2.textAlign='left'}}
 
 /* ---------- report ---------- */
@@ -441,35 +451,49 @@ function report(e){
   const lowE=mean(byM.slice(0,third).map(r=>Math.abs(r.med))),highE=mean(byM.slice(-third).map(r=>Math.abs(r.med)));
   const sylE={};ok.forEach(r=>{if(r.syl)(sylE[r.syl]=sylE[r.syl]||[]).push(Math.abs(r.med))});
   $('repTitle').textContent=e.name;$('sPct').textContent=pct+'%';
-  $('sSub').textContent=ok.length?`Average ${Math.round(avgAbs)} cents off · tends ${Math.abs(lean)<8?'centred':lean<0?'flat':'sharp'}`:'No singing detected';
+  $('sSub').textContent=ok.length?`Average ${Math.round(avgAbs)} cents off · tends ${Math.abs(lean)<8?'centred':lean<0?'flat':'sharp'}`:'Didn\'t hear you this time';
   const lab=(v,a,b,t)=>v<a?t[0]:v<b?t[1]:t[2];
   const rows=[
-    ['Pitch accuracy',Math.max(0,100-avgAbs*1.6),lab(avgAbs,15,35,['Strong','Close','Needs work'])],
-    ['Steadiness',Math.max(0,100-stab*(allTr?1.5:2.5)),allTr?lab(stab,20,35,['Steady','Some wobble','Unsteady']):lab(stab,12,25,['Steady','Some wobble','Unsteady'])],
-    ...(tone.length?[['Clear tone',Math.max(0,Math.min(100,(clar-.75)/.23*100)),clar>=.93?'Clear':clar>=.86?'A bit airy':'Breathy'],
-    ['Ring',Math.max(0,Math.min(100,ring*400)),ring>=.15?'Bright, ringing':ring>=.06?'Balanced':'Soft / dark']]:[]),
+    ['Pitch accuracy',Math.max(0,100-avgAbs*1.6),lab(avgAbs,15,35,['Strong','Close','Growing'])],
+    ['Steadiness',Math.max(0,100-stab*(allTr?1.5:2.5)),allTr?lab(stab,20,35,['Steady','Mostly steady','Settling']):lab(stab,12,25,['Steady','Mostly steady','Settling'])],
+    ...(tone.length?[['Clear tone',Math.max(0,Math.min(100,(clar-.75)/.23*100)),clar>=.93?'Clear':clar>=.86?'Slightly airy':'Airy'],
+    ['Ring',Math.max(0,Math.min(100,ring*400)),ring>=.15?'Bright, ringing':ring>=.06?'Balanced':'Warm, soft']]:[]),
     ['Notes held',tot?(ok.length/tot*100):0,`${ok.length} of ${tot}`]];
-  $('stats').innerHTML=rows.map(([n,v,l])=>`<div class="stat"><span>${n}</span><span class="b"><i style="width:${Math.round(v)}%;background:${v>=70?'var(--ok)':v>=45?'var(--warn)':'var(--rec)'}"></i></span><span>${esc(l)}</span></div>`).join('');
+  $('stats').innerHTML=rows.map(([n,v,l])=>`<div class="stat"><span>${n}</span><span class="b"><i style="width:${Math.round(v)}%;background:${v>=70?'var(--on)':v>=45?'var(--near)':'var(--far)'}"></i></span><span>${esc(l)}</span></div>`).join('');
   const tips=[];
-  if(!ok.length)tips.push('I couldn\'t hear you. Check mic permission, sing a little louder, and keep the phone 30–50 cm from your mouth.');
+  if(!ok.length)tips.push('I couldn\'t hear you this time. Check the mic permission, keep the phone 30–50 cm away, and sing out. You\'ve got this.');
   else{
-    if(lean<-12)tips.push('You tend to sing flat. Keep your breath energy up through the end of each phrase, especially on the way down. Think "up" as the notes descend.');
-    if(lean>12)tips.push('You tend to sing sharp. Ease off the push: lighter volume and a relaxed jaw usually bring the pitch down.');
-    if(byM.length>=6&&highE>lowE+12)tips.push(`Your top notes drift more (around ${Math.round(highE)} cents vs ${Math.round(lowE)} at the bottom). Try a lighter, heady sound up high, open the vowel slightly, and stay at this top note until it settles before going higher.`);
-    if(byM.length>=6&&lowE>highE+12)tips.push('Your lowest notes are the least accurate. Don\'t press down for them; keep them light and speech-like, and skip notes below your comfortable range.');
-    const sk=Object.keys(sylE);if(sk.length>1){const ms=sk.map(k=>[k,mean(sylE[k])]).sort((a,b)=>b[1]-a[1]);if(ms[0][1]>ms[ms.length-1][1]+10)tips.push(`You're less accurate on "${ms[0][0]}" (${Math.round(ms[0][1])} cents) than on "${ms[ms.length-1][0]}" (${Math.round(ms[ms.length-1][1])} cents). Try keeping the same mouth space and placement when you switch sounds.`)}
-    if(stab>=sLim)tips.push(allTr?'Pitch drifts during the trill. Keep the airflow steady and the lips loose; if the trill keeps stopping, lightly press your cheeks forward with your fingertips.':'Held notes wobble. Aim for a steady, even airflow: practise a gentle "sss" hiss for 10 seconds, then sing the note with the same steady feeling. (A wide vibrato can also show up here.)');
-    if(tone.length&&clar<.88)tips.push('Your tone reads as breathy. Try starting notes with a gentle, clean onset, or warm up on "ng" or a hum to get the cords meeting more firmly.');
-    if(tone.length&&ring<.06)tips.push('Your sound is on the soft or dark side. For more ring, try a buzzy "ng" or "nyah" and aim the sound forward, toward the front of your face.');
+    if(lean<-12)tips.push('Your notes tend to sit a touch low. Keep your breath energy up through the end of each phrase, especially on the way down. Think "up" as the notes descend.');
+    if(lean>12)tips.push('Your notes tend to sit a touch high. Ease off the push: lighter volume and a relaxed jaw usually bring the pitch down.');
+    if(byM.length>=6&&highE>lowE+12)tips.push(`Your top notes are still settling in (around ${Math.round(highE)} cents vs ${Math.round(lowE)} at the bottom). Try a lighter, heady sound up high, open the vowel slightly, and stay at this top note until it settles before going higher.`);
+    if(byM.length>=6&&lowE>highE+12)tips.push('Your lowest notes have the most room to grow. Don\'t press down for them; keep them light and speech-like, and skip notes below your comfortable range.');
+    const sk=Object.keys(sylE);if(sk.length>1){const ms=sk.map(k=>[k,mean(sylE[k])]).sort((a,b)=>b[1]-a[1]);if(ms[0][1]>ms[ms.length-1][1]+10)tips.push(`"${ms[0][0]}" is a little less settled (${Math.round(ms[0][1])} cents) than on "${ms[ms.length-1][0]}" (${Math.round(ms[ms.length-1][1])} cents). Try keeping the same mouth space and placement when you switch sounds.`)}
+    if(stab>=sLim)tips.push(allTr?'Pitch drifts during the trill. Keep the airflow steady and the lips loose; if the trill keeps stopping, lightly press your cheeks forward with your fingertips.':'Held notes are still finding their center. Aim for a steady, even airflow: practise a gentle "sss" hiss for 10 seconds, then sing the note with the same steady feeling. (A wide vibrato can also show up here.)');
+    if(tone.length&&clar<.88)tips.push('Your tone is on the airy side. Try starting notes with a gentle, clean onset, or warm up on "ng" or a hum to get the cords meeting more firmly.');
+    if(tone.length&&ring<.06)tips.push('Your sound is warm and soft. For more ring, try a buzzy "ng" or "nyah" and aim the sound forward, toward the front of your face.');
     if(miss>0&&res.some(r=>r.miss&&r.trill))tips.push('Some trill notes were too faint to read. Hold the phone a bit closer (about 20–30 cm) and keep the trill going through the whole note.');
-    else if(miss>0)tips.push(`${miss} note${miss>1?'s were':' was'} too short or quiet to score. Sustain through the full length of each note.`);
-    if(pct>=85&&stab<15)tips.push('Excellent run. Extend the range one step, or bump the tempo by 10 bpm.');
-    if(!tips.length)tips.push('Solid overall. Repeat it once more, focusing on the reddest notes in the chart below.');
+    else if(miss>0)tips.push(`${miss} note${miss>1?'s were':' was'} too short or quiet to hear. Sustain through the full length of each note.`);
+    if(pct>=85&&stab<15)tips.push('Ready for a new challenge? Extend the range one step, or bump the tempo by 10 bpm.');
+    if(!tips.length)tips.push('Nothing big to fix. Run it once more and enjoy nudging the gold and lavender notes toward green.');
   }
-  $('tips').innerHTML=tips.map(t=>`<li>${esc(t)}</li>`).join('');
+  $('tips').innerHTML=tips.slice(0,2).map(t=>`<li>${esc(t)}</li>`).join('');
+  const good=[];
+  if(ok.length){
+    if(pct>=50)good.push(`${inT} of ${tot} notes landed right in tune.`);else if(inT)good.push(`${inT} note${inT==1?'':'s'} landed right in tune. Each one is a step forward.`);else good.push(`You sang ${ok.length} of ${tot} notes all the way through.`);
+    if(byM.length>=6&&lowE+12<highE)good.push('Your lower notes were especially accurate.');
+    if(byM.length>=6&&highE+12<lowE)good.push('Your top notes were especially accurate. That\'s the hard part!');
+    if(Math.abs(lean)<8)good.push('You stayed centred: not habitually sharp or flat.');
+    if(stab<(allTr?20:12))good.push(allTr?'Your trill held a steady pitch.':'Your held notes were steady.');
+    if(tone.length&&clar>=.92)good.push('Clear, focused tone.');
+    if(tot&&ok.length/tot>=.9)good.push('You sustained nearly every note.');
+    const sk2=Object.keys(sylE);if(sk2.length>1){const best=sk2.map(k=>[k,mean(sylE[k])]).sort((a,b)=>a[1]-b[1])[0];if(best[1]<20)good.push(`"${best[0]}" sounded especially secure.`)}
+  }else good.push('You showed up to practise. That counts.');
+  $('good').innerHTML=good.slice(0,4).map(t=>`<li>${esc(t)}</li>`).join('');
+  const prev=store.get('vp_hist',[]).filter(x=>x.name==e.name),bestPrev=prev.length?Math.max(...prev.map(x=>x.pct)):null;
+  $('cheer').textContent=!ok.length?'':!prev.length?'First run logged. This is your starting point.':pct>bestPrev?`Your best yet on this one (previous best ${bestPrev}%)!`:pct>prev[0].pct?`Up ${pct-prev[0].pct} from last time. Nice progress.`:pct==prev[0].pct?'Right where you were last time. Consistency builds skill.':'Every run teaches your voice something. Keep going.';
   const groups={};res.forEach(r=>(groups[r.round+'-'+r.pass]=groups[r.round+'-'+r.pass]||[]).push(r));
-  $('notesOut').innerHTML=Object.values(groups).map(rs=>`<div class="strip"><span class="rl">Round ${rs[0].round+1}${e.vows.length>1?' · '+esc(e.vows[rs[0].pass]):''}</span>${rs.map(r=>{const a=r.miss?null:Math.abs(r.med);const bg=r.miss?'var(--muted)':a<=25?'var(--ok)':a<=50?'var(--warn)':'var(--rec)';return `<div class="cell" style="background:${bg}"><b>${nm(r.m)}</b>${r.miss?'—':(r.med>0?'+':'')+Math.round(r.med)}</div>`}).join('')}</div>`).join('');
-  if(ok.length){const h=store.get('vp_hist',[]);h.unshift({name:e.name,pct,date:new Date().toLocaleDateString(undefined,{month:'short',day:'numeric'})});store.set('vp_hist',h.slice(0,50))}
+  $('notesOut').innerHTML=Object.values(groups).map(rs=>`<div class="strip"><span class="rl">Round ${rs[0].round+1}${e.vows.length>1?' · '+esc(e.vows[rs[0].pass]):''}</span>${rs.map(r=>{const a=r.miss?null:Math.abs(r.med);const bg=r.miss?'':a<=25?'var(--on)':a<=50?'var(--near)':'var(--far)';return `<div class="cell${r.miss?' miss':''}" style="${bg?'background:'+bg:''}"><b>${nm(r.m)}</b>${r.miss?'—':(r.med>0?'+':'')+Math.round(r.med)}</div>`}).join('')}</div>`).join('');
+  if(ok.length){const h=store.get('vp_hist',[]);h.unshift({name:e.name,pct,ts:Date.now(),date:new Date().toLocaleDateString(undefined,{month:'short',day:'numeric'})});store.set('vp_hist',h.slice(0,50))}
   $('trNote').hidden=!res.some(r=>r.trill);
   $('nextBtn').hidden=!queue.length;if(queue.length)$('nextBtn').textContent='Next: '+queue[0].name;
   go('rep')}
