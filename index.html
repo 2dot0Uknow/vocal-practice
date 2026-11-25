@@ -106,6 +106,9 @@ ul.tips{padding-left:20px;margin:6px 0}ul.tips li{margin:6px 0}
     <div class="fig"><canvas id="cv"></canvas></div>
     <div class="row" style="margin-top:12px"><button class="pri" id="goBtn">Start</button><button class="ghost" id="backBtn">Back</button></div>
     <label for="vol">Piano volume</label><input id="vol" type="range" min="0" max="1" step="0.05" value="0.6" style="padding:0">
+    <label for="micSel">Microphone</label>
+    <div class="row"><select id="micSel" style="flex:1 1 200px"><option value="">Automatic (phone's choice)</option></select><button class="ghost" id="micScan" style="flex:0 0 auto">Find mics</button></div>
+    <p class="note" id="micNow"></p>
     <label for="sync">Sync: <span id="syncV"></span>. Slide right if the blocks reach the red line before you hear the piano</label><input id="sync" type="range" min="0" max="500" step="10" value="100" style="padding:0">
   </section>
 
@@ -300,8 +303,27 @@ $('vol').oninput=()=>{if(master)master.gain.value=+$('vol').value};
 function piano(m,t,d){const f=hz(m),g=ac.createGain();g.connect(master);
   g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.3,t+.006);g.gain.exponentialRampToValueAtTime(.11,t+.3);g.gain.exponentialRampToValueAtTime(.0005,t+d+.6);
   [1,2,3,4,5,6].forEach(n=>{const o=ac.createOscillator(),og=ac.createGain();o.frequency.value=f*n*(1+.0004*n*n);og.gain.value=1/n**1.6;o.connect(og).connect(g);o.start(t);o.stop(t+d+.7)})}
+/* ---------- microphone picker ---------- */
+const micKind=l=>/usb|wired|jack|line in|external/i.test(l)?'Wired':/bluetooth|headset(?! earpiece)|hands-?free|buds|airpods|\bsco\b|\bbt\b/i.test(l)?'Bluetooth':/headphone/i.test(l)?'Wired':/built-?in|phone|internal|bottom|top|back|front|speaker|earpiece|default|microphone/i.test(l)?'Phone mic':'Mic';
+let micId=store.get('vp_mic','');
+async function listMics(ask){const md=navigator.mediaDevices;if(!md||!md.enumerateDevices)return;
+  let ds=(await md.enumerateDevices()).filter(d=>d.kind=='audioinput');
+  if(ask&&ds.every(d=>!d.label)){try{const st=await md.getUserMedia({audio:true});st.getTracks().forEach(t=>t.stop());ds=(await md.enumerateDevices()).filter(d=>d.kind=='audioinput')}catch(e){$('micNow').textContent='Allow microphone access to see the choices.';return}}
+  const seen=new Set(),opts=ds.filter(d=>d.deviceId&&d.deviceId!='default'&&d.deviceId!='communications'&&!seen.has(d.deviceId)&&seen.add(d.deviceId));
+  $('micSel').innerHTML='<option value="">Automatic (phone\'s choice)</option>'+opts.map((d,i)=>{const l=d.label||'Microphone '+(i+1);return `<option value="${esc(d.deviceId)}">${esc(micKind(l))}: ${esc(l)}</option>`}).join('');
+  $('micSel').value=opts.some(d=>d.deviceId==micId)?micId:'';
+  if(ask&&!opts.length)$('micNow').textContent='No separate mics found. Connect your headphones and tap "Find mics" again.';
+  else if(ask)$('micNow').textContent=`Found ${opts.length} mic${opts.length==1?'':'s'}. Pick one, then press Start.`}
+$('micScan').onclick=()=>listMics(true);
+$('micSel').onchange=()=>{micId=$('micSel').value;store.set('vp_mic',micId);$('micNow').textContent=run?'The new mic will be used next time you press Start.':'Saved. It will be used when you press Start.'};
+if(navigator.mediaDevices)navigator.mediaDevices.addEventListener?.('devicechange',()=>listMics(false));
+listMics(false);
 async function mic(){if(stream)return true;
-  try{stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}})}catch(e){return false}
+  const base={echoCancellation:false,noiseSuppression:false,autoGainControl:false};
+  try{stream=await navigator.mediaDevices.getUserMedia({audio:micId?{...base,deviceId:{exact:micId}}:base})}
+  catch(e){if(!micId)return false;/* chosen mic is gone: fall back to automatic */
+    try{stream=await navigator.mediaDevices.getUserMedia({audio:base});micId='';store.set('vp_mic','');$('micSel').value=''}catch(e2){return false}}
+  {const tr=stream.getAudioTracks()[0],l=tr&&tr.label||'';$('micNow').textContent=l?`Listening with ${micKind(l).toLowerCase()=='mic'?'':micKind(l)+': '}${l}`:'';listMics(false)}
   const src=ac.createMediaStreamSource(stream),hp=ac.createBiquadFilter();hp.type='highpass';hp.frequency.value=60;
   lpN=ac.createBiquadFilter();lpN.type='lowpass';lpN.frequency.value=8000;gainN=ac.createGain();
   an=ac.createAnalyser();an.fftSize=4096;an.smoothingTimeConstant=0;src.connect(hp).connect(lpN).connect(gainN).connect(an);
