@@ -114,6 +114,7 @@ ul.tips{padding-left:20px;margin:6px 0}ul.tips li{margin:6px 0}
       <div id="stats" style="margin-top:10px"></div></div>
     <div class="card"><b>What to work on</b><ul class="tips" id="tips"></ul></div>
     <div class="card"><b>Note by note</b><p class="note">Cents off target (100 = a half step). Teal means within 25 cents, amber within 50, red beyond that.</p><div id="notesOut"></div></div>
+    <p class="note" id="trNote" hidden>Lip-trill notes are scored on pitch only, since the buzz makes tone readings unreliable.</p>
     <p class="note">Tone readings are estimates from the sound and vary with the vowel, mic and room. Use them to spot trends, not as a verdict.</p>
     <div class="row"><button class="pri" id="nextBtn" hidden>Next exercise</button><button id="againBtn">Go again</button><button class="ghost" data-go="lib">Done</button></div>
   </section>
@@ -290,7 +291,9 @@ $('saveBtn').onclick=()=>{const cards=[...$('eds').querySelectorAll('.ed')],out=
   out.forEach(e=>{const i=exs.findIndex(x=>x.id==e.id);i>=0?exs[i]=e:exs.push(e)});saveExs();go('lib');renderLib()};
 
 /* ---------- audio ---------- */
-let ac,master,an,buf,fbuf,stream;
+let ac,master,an,buf,fbuf,stream,lpN,gainN,dec;
+const TRILL=/trill|roll|bubble|raspberr|brr|lip/i;
+const isTrill=s=>TRILL.test(s||'');
 function audio(){if(!ac){ac=new (window.AudioContext||window.webkitAudioContext)();const lp=ac.createBiquadFilter();lp.type='lowpass';lp.frequency.value=5000;master=ac.createGain();master.gain.value=+$('vol').value;master.connect(lp).connect(ac.destination)}if(ac.state=='suspended')ac.resume()}
 $('vol').oninput=()=>{if(master)master.gain.value=+$('vol').value};
 function piano(m,t,d){const f=hz(m),g=ac.createGain();g.connect(master);
@@ -298,15 +301,20 @@ function piano(m,t,d){const f=hz(m),g=ac.createGain();g.connect(master);
   [1,2,3,4,5,6].forEach(n=>{const o=ac.createOscillator(),og=ac.createGain();o.frequency.value=f*n*(1+.0004*n*n);og.gain.value=1/n**1.6;o.connect(og).connect(g);o.start(t);o.stop(t+d+.7)})}
 async function mic(){if(stream)return true;
   try{stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}})}catch(e){return false}
-  const src=ac.createMediaStreamSource(stream);an=ac.createAnalyser();an.fftSize=2048;an.smoothingTimeConstant=0;src.connect(an);
-  buf=new Float32Array(an.fftSize);fbuf=new Float32Array(an.frequencyBinCount);return true}
+  const src=ac.createMediaStreamSource(stream),hp=ac.createBiquadFilter();hp.type='highpass';hp.frequency.value=60;
+  lpN=ac.createBiquadFilter();lpN.type='lowpass';lpN.frequency.value=8000;gainN=ac.createGain();
+  an=ac.createAnalyser();an.fftSize=4096;an.smoothingTimeConstant=0;src.connect(hp).connect(lpN).connect(gainN).connect(an);
+  buf=new Float32Array(an.fftSize);dec=new Float32Array(2048);fbuf=new Float32Array(an.frequencyBinCount);return true}
+/* trill mode: filter out buzz/air above ~1.1 kHz, boost the level, look at a longer window (halved sample rate) */
+let mode=null;
+function setMode(tr){if(mode===tr)return;mode=tr;const t=ac.currentTime;lpN.frequency.setTargetAtTime(tr?1100:8000,t,.02);gainN.gain.setTargetAtTime(tr?2.5:1,t,.02)}
 /* McLeod pitch method: returns {f, c(clarity)} or null */
-function detect(x,sr){const N=x.length;let r=0;for(let i=0;i<N;i++)r+=x[i]*x[i];if(Math.sqrt(r/N)<.012)return null;
+function detect(x,sr,o={gate:.012,min:.6}){const N=x.length;let r=0;for(let i=0;i<N;i++)r+=x[i]*x[i];if(Math.sqrt(r/N)<o.gate)return null;
   const maxLag=Math.min(N>>1,Math.floor(sr/65)),n=new Float32Array(maxLag+2);
   for(let tau=1;tau<=maxLag+1;tau++){let a2=0,m=0;for(let i=0;i<N-tau;i++){const a=x[i],b=x[i+tau];a2+=a*b;m+=a*a+b*b}n[tau]=m?2*a2/m:0}
   let tau=1;while(tau<maxLag&&n[tau]>0)tau++;
   let best=0;for(let t=tau;t<=maxLag;t++)if(n[t]>best)best=n[t];
-  if(best<.6)return null;
+  if(best<o.min)return null;
   for(let t=tau+1;t<=maxLag;t++){if(n[t]>=.9*best&&n[t]>n[t-1]&&n[t]>=n[t+1]){const a=n[t-1],b=n[t],c=n[t+1],d=a-2*b+c,sh=d?(a-c)/(2*d):0;const f=sr/(t+sh);return f>60&&f<1200?{f,c:b}:null}}
   return null}
 function spectral(f0){an.getFloatFrequencyData(fbuf);const bw=ac.sampleRate/an.fftSize;let lo=0,hi=0;
@@ -322,19 +330,26 @@ const ro=new ResizeObserver(()=>{const d=devicePixelRatio||1;cv.width=cv.clientW
 function openPrac(e){cur=e;go('prac');$('pName').textContent=e.name+(queue.length?`  ·  ${queue.length} more after this`:'');$('pInfo').textContent=desc(e);seq=build(e,0);frames=[];$('goBtn').textContent='Start';$('rSyl').textContent=seq.targets[0]?.syl||'–';fit(0);draw(0)}
 function build(e,t0){const spb=60/e.bpm,notes=parsePat(e.pat),rs=rootsOf(e,notes),passes=e.vows.length?e.vows:[''],targets=[];const plays=[];let t=t0;
   rs.forEach((r,k)=>{plays.push({m:[r,r+4,r+7],t,d:spb*1.5});t+=spb*2;
-    passes.forEach((v,p)=>{if(p)t+=spb;notes.forEach(n=>{const d=spb*(n.h?e.hold:1);plays.push({m:[r+n.s],t,d});targets.push({m:r+n.s,t0:t,t1:t+d,round:k,pass:p,syl:(e.rootVow&&n.deg==1)?e.rootVow:v});t+=d})});t+=spb});
+    passes.forEach((v,p)=>{if(p)t+=spb;notes.forEach(n=>{const d=spb*(n.h?e.hold:1);plays.push({m:[r+n.s],t,d});const syl=(e.rootVow&&n.deg==1)?e.rootVow:v;targets.push({m:r+n.s,t0:t,t1:t+d,round:k,pass:p,syl,trill:isTrill(syl)});t+=d})});t+=spb});
   return {targets,plays,end:t+.3}}
 const err=(m,tm)=>{let c=(m-tm)*100;return c-1200*Math.round(c/1200)};
 const activeAt=t=>seq.targets.find(x=>t>=x.t0&&t<x.t1+.15);
 $('goBtn').onclick=async()=>{if(run){stop();return}audio();
   if(!await mic()){$('rCents').textContent='Mic unavailable. Allow access, and open from the https:// address.';return}
-  const t0=ac.currentTime+.6;seq=build(cur,t0);frames=[];seq.plays.forEach(p=>p.m.forEach(m=>piano(m,p.t,p.d)));
+  const t0=ac.currentTime+.6;seq=build(cur,t0);frames=[];mode=null;recent=[];seq.plays.forEach(p=>p.m.forEach(m=>piano(m,p.t,p.d)));
   run=true;$('goBtn').textContent='Stop';loop()};
 $('backBtn').onclick=()=>{stop();queue=[];go('lib');renderLib()};
 function stop(){if(!run)return;run=false;cancelAnimationFrame(raf);if(ac){master&&master.disconnect();master=null;ac.close();ac=null;stream&&stream.getTracks().forEach(t=>t.stop());stream=null}$('goBtn').textContent='Start'}
-function loop(){if(!run)return;an.getFloatTimeDomainData(buf);const now=ac.currentTime,p=detect(buf,ac.sampleRate),fr={t:now,m:null};
-  if(p){fr.m=fToM(p.f);fr.c=p.c;Object.assign(fr,spectral(p.f))}frames.push(fr);
-  const tg=activeAt(now)||seq.targets.find(x=>x.t0>now);
+let recent=[];
+function loop(){if(!run)return;an.getFloatTimeDomainData(buf);const now=ac.currentTime;
+  const tg=activeAt(now)||seq.targets.find(x=>x.t0>now),tr=!!(tg&&tg.trill);setMode(tr);
+  let p;if(tr){for(let i=0;i<2048;i++)dec[i]=(buf[2*i]+buf[2*i+1])/2;p=detect(dec,ac.sampleRate/2,{gate:.004,min:.4})}
+  else p=detect(buf.subarray(2048),ac.sampleRate);
+  const fr={t:now,m:null,tr};
+  if(p){fr.m=fToM(p.f);fr.c=p.c;Object.assign(fr,spectral(p.f))}
+  if(tr){/* smooth over the flutter: median of the last ~0.15 s, and bridge short dropouts */
+    if(fr.m!=null)recent.push({t:now,m:fr.m});recent=recent.filter(x=>now-x.t<.15);if(recent.length)fr.m=med(recent.map(x=>x.m))}else recent=[];
+  frames.push(fr);
   $('rTarget').textContent=tg?nm(tg.m):'–';$('rSyl').textContent=tg&&tg.syl?tg.syl:'–';
   if(fr.m!=null){$('rNote').textContent=nm(fr.m);if(tg){const c=err(fr.m,tg.m);$('rCents').textContent=(c>0?'+':'')+Math.round(c)+' cents';$('needle').style.left=`calc(${50+Math.max(-50,Math.min(50,c/2))}% - 2px)`}}
   draw(now);if(now>seq.end){const e=cur;stop();report(e);return}raf=requestAnimationFrame(loop)}
@@ -365,7 +380,9 @@ function report(e){
     return {...x,med:m,sd:sd(cs.filter(c=>Math.abs(c-m)<150)),clar:mean(fs.map(f=>f.c)),ring:mean(fs.map(f=>f.ring))}});
   const ok=res.filter(r=>!r.miss),tot=res.length;
   const inT=ok.filter(r=>Math.abs(r.med)<=25).length,pct=tot?Math.round(inT/tot*100):0;
-  const avgAbs=mean(ok.map(r=>Math.abs(r.med))),lean=mean(ok.map(r=>r.med)),stab=med(ok.map(r=>r.sd))??0,clar=mean(ok.map(r=>r.clar)),ring=mean(ok.map(r=>r.ring)),miss=tot-ok.length;
+  const tone=ok.filter(r=>!r.trill),allTr=ok.length&&!tone.length;
+  const avgAbs=mean(ok.map(r=>Math.abs(r.med))),lean=mean(ok.map(r=>r.med)),stab=med((tone.length?tone:ok).map(r=>r.sd))??0,clar=mean(tone.map(r=>r.clar)),ring=mean(tone.map(r=>r.ring)),miss=tot-ok.length;
+  const sLim=allTr?30:18;
   const byM=[...ok].sort((a,b)=>a.m-b.m),third=Math.max(1,Math.floor(byM.length/3));
   const lowE=mean(byM.slice(0,third).map(r=>Math.abs(r.med))),highE=mean(byM.slice(-third).map(r=>Math.abs(r.med)));
   const sylE={};ok.forEach(r=>{if(r.syl)(sylE[r.syl]=sylE[r.syl]||[]).push(Math.abs(r.med))});
@@ -374,9 +391,9 @@ function report(e){
   const lab=(v,a,b,t)=>v<a?t[0]:v<b?t[1]:t[2];
   const rows=[
     ['Pitch accuracy',Math.max(0,100-avgAbs*1.6),lab(avgAbs,15,35,['Strong','Close','Needs work'])],
-    ['Steadiness',Math.max(0,100-stab*2.5),lab(stab,12,25,['Steady','Some wobble','Unsteady'])],
-    ['Clear tone',Math.max(0,Math.min(100,(clar-.75)/.23*100)),clar>=.93?'Clear':clar>=.86?'A bit airy':'Breathy'],
-    ['Ring',Math.max(0,Math.min(100,ring*400)),ring>=.15?'Bright, ringing':ring>=.06?'Balanced':'Soft / dark'],
+    ['Steadiness',Math.max(0,100-stab*(allTr?1.5:2.5)),allTr?lab(stab,20,35,['Steady','Some wobble','Unsteady']):lab(stab,12,25,['Steady','Some wobble','Unsteady'])],
+    ...(tone.length?[['Clear tone',Math.max(0,Math.min(100,(clar-.75)/.23*100)),clar>=.93?'Clear':clar>=.86?'A bit airy':'Breathy'],
+    ['Ring',Math.max(0,Math.min(100,ring*400)),ring>=.15?'Bright, ringing':ring>=.06?'Balanced':'Soft / dark']]:[]),
     ['Notes held',tot?(ok.length/tot*100):0,`${ok.length} of ${tot}`]];
   $('stats').innerHTML=rows.map(([n,v,l])=>`<div class="stat"><span>${n}</span><span class="b"><i style="width:${Math.round(v)}%;background:${v>=70?'var(--ok)':v>=45?'var(--warn)':'var(--rec)'}"></i></span><span>${esc(l)}</span></div>`).join('');
   const tips=[];
@@ -387,10 +404,11 @@ function report(e){
     if(byM.length>=6&&highE>lowE+12)tips.push(`Your top notes drift more (around ${Math.round(highE)} cents vs ${Math.round(lowE)} at the bottom). Try a lighter, heady sound up high, open the vowel slightly, and stay at this top note until it settles before going higher.`);
     if(byM.length>=6&&lowE>highE+12)tips.push('Your lowest notes are the least accurate. Don\'t press down for them; keep them light and speech-like, and skip notes below your comfortable range.');
     const sk=Object.keys(sylE);if(sk.length>1){const ms=sk.map(k=>[k,mean(sylE[k])]).sort((a,b)=>b[1]-a[1]);if(ms[0][1]>ms[ms.length-1][1]+10)tips.push(`You're less accurate on "${ms[0][0]}" (${Math.round(ms[0][1])} cents) than on "${ms[ms.length-1][0]}" (${Math.round(ms[ms.length-1][1])} cents). Try keeping the same mouth space and placement when you switch sounds.`)}
-    if(stab>=18)tips.push('Held notes wobble. Aim for a steady, even airflow: practise a gentle "sss" hiss for 10 seconds, then sing the note with the same steady feeling. (A wide vibrato can also show up here.)');
-    if(clar<.88)tips.push('Your tone reads as breathy. Try starting notes with a gentle, clean onset, or warm up on "ng" or a hum to get the cords meeting more firmly.');
-    if(ring<.06)tips.push('Your sound is on the soft or dark side. For more ring, try a buzzy "ng" or "nyah" and aim the sound forward, toward the front of your face.');
-    if(miss>0)tips.push(`${miss} note${miss>1?'s were':' was'} too short or quiet to score. Sustain through the full length of each note.`);
+    if(stab>=sLim)tips.push(allTr?'Pitch drifts during the trill. Keep the airflow steady and the lips loose; if the trill keeps stopping, lightly press your cheeks forward with your fingertips.':'Held notes wobble. Aim for a steady, even airflow: practise a gentle "sss" hiss for 10 seconds, then sing the note with the same steady feeling. (A wide vibrato can also show up here.)');
+    if(tone.length&&clar<.88)tips.push('Your tone reads as breathy. Try starting notes with a gentle, clean onset, or warm up on "ng" or a hum to get the cords meeting more firmly.');
+    if(tone.length&&ring<.06)tips.push('Your sound is on the soft or dark side. For more ring, try a buzzy "ng" or "nyah" and aim the sound forward, toward the front of your face.');
+    if(miss>0&&res.some(r=>r.miss&&r.trill))tips.push('Some trill notes were too faint to read. Hold the phone a bit closer (about 20–30 cm) and keep the trill going through the whole note.');
+    else if(miss>0)tips.push(`${miss} note${miss>1?'s were':' was'} too short or quiet to score. Sustain through the full length of each note.`);
     if(pct>=85&&stab<15)tips.push('Excellent run. Extend the range one step, or bump the tempo by 10 bpm.');
     if(!tips.length)tips.push('Solid overall. Repeat it once more, focusing on the reddest notes in the chart below.');
   }
@@ -398,6 +416,7 @@ function report(e){
   const groups={};res.forEach(r=>(groups[r.round+'-'+r.pass]=groups[r.round+'-'+r.pass]||[]).push(r));
   $('notesOut').innerHTML=Object.values(groups).map(rs=>`<div class="strip"><span class="rl">Round ${rs[0].round+1}${e.vows.length>1?' · '+esc(e.vows[rs[0].pass]):''}</span>${rs.map(r=>{const a=r.miss?null:Math.abs(r.med);const bg=r.miss?'var(--muted)':a<=25?'var(--ok)':a<=50?'var(--warn)':'var(--rec)';return `<div class="cell" style="background:${bg}"><b>${nm(r.m)}</b>${r.miss?'—':(r.med>0?'+':'')+Math.round(r.med)}</div>`}).join('')}</div>`).join('');
   if(ok.length){const h=store.get('vp_hist',[]);h.unshift({name:e.name,pct,date:new Date().toLocaleDateString(undefined,{month:'short',day:'numeric'})});store.set('vp_hist',h.slice(0,50))}
+  $('trNote').hidden=!res.some(r=>r.trill);
   $('nextBtn').hidden=!queue.length;if(queue.length)$('nextBtn').textContent='Next: '+queue[0].name;
   go('rep')}
 $('againBtn').onclick=()=>openPrac(cur);
