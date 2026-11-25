@@ -85,6 +85,7 @@ ul.tips{padding-left:20px;margin:6px 0}ul.tips li{margin:6px 0}
     <div id="list"></div>
     <h2 style="margin-top:24px">Your journey so far</h2>
     <div id="hist" class="hist">No sessions yet.</div>
+    <div class="row" style="margin-top:10px"><button class="ghost" id="moreBtn" hidden>Load more</button></div>
   </section>
 
   <section id="add">
@@ -246,6 +247,12 @@ let queue=[];
 const go=id=>{document.querySelectorAll('section').forEach(s=>s.classList.toggle('on',s.id==id));window.scrollTo(0,0)};
 document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>{stop();queue=[];go(b.dataset.go);renderLib()});
 const desc=e=>`${e.pat.replace(/-/g,' ')}${e.vows.length?' · '+e.vows.join(' / '):''}${e.rootVow?' (root: '+e.rootVow+')':''} · ${nm(e.start)}–${nm(e.end)}${e.top?' range':''} · ${e.bpm} bpm`;
+/* journey list: newest 3, then 6 more each time "Load more" is tapped */
+let shown=3;
+function renderHist(h=store.get('vp_hist',[])){
+  $('hist').innerHTML=h.length?h.slice(0,shown).map(x=>`<div class="stat" style="grid-template-columns:minmax(0,1fr) auto"><span>${esc(x.name)} <small>· ${esc(x.date)}</small></span><span>${esc(x.pct)}% landed</span></div>`).join(''):'No sessions yet.';
+  const left=h.length-shown;$('moreBtn').hidden=left<=0;if(left>0)$('moreBtn').textContent=`Load more (${Math.min(6,left)} of ${left} left)`}
+$('moreBtn').onclick=()=>{shown+=6;renderHist()};
 function renderLib(){
   $('list').innerHTML=exs.map((e,i)=>`<div class="card ex"><div class="t"><b>${esc(e.name)}</b><small>${esc(desc(e))}</small></div><button class="pri" data-i="${i}" data-a="p">Practice</button><button class="ghost" data-i="${i}" data-a="e">Edit</button></div>`).join('')||'<p class="note">No exercises yet. Tap "Add exercises".</p>';
   $('list').querySelectorAll('button').forEach(b=>b.onclick=()=>{const e=exs[+b.dataset.i];b.dataset.a=='p'?(queue=[],openPrac(e)):openEdit(e)});
@@ -254,7 +261,7 @@ function renderLib(){
   {const day=t=>new Date(t).toDateString(),days=new Set(h.filter(x=>x.ts).map(x=>day(x.ts)));let st=0;const d=new Date();if(!days.has(day(d)))d.setDate(d.getDate()-1);while(days.has(day(d))){st++;d.setDate(d.getDate()-1)}
    const wk=h.filter(x=>x.ts&&Date.now()-x.ts<7*864e5).length;
    $('journey').innerHTML=`<div><b>${h.length}</b><span>sessions</span></div><div><b>${wk}</b><span>this week</span></div><div><b>${st}</b><span>day streak</span></div>`}
-  $('hist').innerHTML=h.length?h.slice(0,12).map(x=>`<div class="stat" style="grid-template-columns:minmax(0,1fr) auto"><span>${esc(x.name)} <small>· ${esc(x.date)}</small></span><span>${esc(x.pct)}% landed</span></div>`).join(''):'No sessions yet.';
+  renderHist(h);
   const micOK=window.isSecureContext&&navigator.mediaDevices&&navigator.mediaDevices.getUserMedia;
   $('micWarn').hidden=!!micOK;$('micWarn').textContent='The microphone can\'t be used here. Open this app from its https:// web address so it can hear you.';
 }
@@ -494,7 +501,7 @@ function report(e){
   $('cheer').textContent=!ok.length?'':!prev.length?'First run logged. This is your starting point.':pct>bestPrev?`Your best yet on this one (previous best ${bestPrev}%)!`:pct>prev[0].pct?`Up ${pct-prev[0].pct} from last time. Nice progress.`:pct==prev[0].pct?'Right where you were last time. Consistency builds skill.':'Every run teaches your voice something. Keep going.';
   const groups={};res.forEach(r=>(groups[r.round+'-'+r.pass]=groups[r.round+'-'+r.pass]||[]).push(r));
   $('notesOut').innerHTML=Object.values(groups).map(rs=>`<div class="strip"><span class="rl">Round ${rs[0].round+1}${e.vows.length>1?' · '+esc(e.vows[rs[0].pass]):''}</span>${rs.map(r=>{const a=r.miss?null:Math.abs(r.med);const bg=r.miss?'':a<=25?'var(--on)':a<=50?'var(--near)':'var(--far)';return `<div class="cell${r.miss?' miss':''}" style="${bg?'background:'+bg:''}"><b>${nm(r.m)}</b>${r.miss?'—':(r.med>0?'+':'')+Math.round(r.med)}</div>`}).join('')}</div>`).join('');
-  if(ok.length){const h=store.get('vp_hist',[]);h.unshift({name:e.name,pct,ts:Date.now(),date:new Date().toLocaleDateString(undefined,{month:'short',day:'numeric'})});store.set('vp_hist',h.slice(0,50))}
+  if(ok.length){const h=store.get('vp_hist',[]);h.unshift({name:e.name,pct,ts:Date.now(),date:new Date().toLocaleDateString(undefined,{month:'short',day:'numeric'})});store.set('vp_hist',h.slice(0,200));shown=3}
   $('trNote').hidden=!res.some(r=>r.trill);
   $('nextBtn').hidden=!queue.length;if(queue.length)$('nextBtn').textContent='Next: '+queue[0].name;
   go('rep')}
