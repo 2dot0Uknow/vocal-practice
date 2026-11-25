@@ -340,12 +340,21 @@ function build(e,t0){const spb=60/e.bpm,notes=parsePat(e.pat),rs=rootsOf(e,notes
   return {targets,plays,end:t+.3}}
 const err=(m,tm)=>{let c=(m-tm)*100;return c-1200*Math.round(c/1200)};
 const activeAt=t=>seq.targets.find(x=>t>=x.t0&&t<x.t1+.15);
+/* Voice lag VL: mic delay (big on Bluetooth) + your natural reaction time. Learned automatically by
+   sliding the voice track against the notes and keeping the offset where the pitches match best. */
+let VL=store.get('vp_vlag',.15),lastEst=0;
+function strictAt(t){const T=seq.targets;let lo=0,hi=T.length-1;while(lo<=hi){const mid=(lo+hi)>>1;if(T[mid].t1<=t)lo=mid+1;else if(T[mid].t0>t)hi=mid-1;else return T[mid]}return null}
+function estimateLag(fs){const v=fs.filter(f=>f.m!=null);if(v.length<40)return null;let best=null,bc=1e9,costs=[];
+  for(let d=0;d<=.8;d+=.02){let c=0,n=0;for(const f of v){const x=strictAt(f.t-d);if(!x)continue;c+=Math.min(Math.abs(err(f.m,x.m)),300);n++}
+    if(n<30)continue;const avg=c/n;costs.push(avg);if(avg<bc){bc=avg;best=d}}
+  if(best==null||bc>120||Math.max(...costs)-bc<15)return null;return best}
+const vt=f=>f.t-VL;
 $('goBtn').onclick=async()=>{if(run){stop();return}audio();
   if(!await mic()){$('rCents').textContent='Mic unavailable. Allow access, and open from the https:// address.';return}
   if(L==null){const auto=(ac.outputLatency||0)+(ac.baseLatency||0);L=Math.min(.5,auto>.01?auto:.1)}
   try{Lin=stream.getAudioTracks()[0].getSettings().latency||.02}catch(e){Lin=.02}
   showSync();
-  const t0=ac.currentTime+.6;seq=build(cur,t0);frames=[];mode=null;recent=[];seq.plays.forEach(p=>p.m.forEach(m=>piano(m,p.t,p.d)));
+  const t0=ac.currentTime+.6;seq=build(cur,t0);frames=[];mode=null;recent=[];lastEst=0;seq.plays.forEach(p=>p.m.forEach(m=>piano(m,p.t,p.d)));
   run=true;$('goBtn').textContent='Stop';loop()};
 $('backBtn').onclick=()=>{stop();queue=[];go('lib');renderLib()};
 function stop(){if(!run)return;run=false;cancelAnimationFrame(raf);if(ac){master&&master.disconnect();master=null;ac.close();ac=null;stream&&stream.getTracks().forEach(t=>t.stop());stream=null}$('goBtn').textContent='Start'}
@@ -359,8 +368,10 @@ function loop(){if(!run)return;an.getFloatTimeDomainData(buf);const now=clk();
   if(tr){/* smooth over the flutter: median of the last ~0.15 s, and bridge short dropouts */
     if(fr.m!=null)recent.push({t:now,m:fr.m});const win=tg?Math.min(.15,Math.max(.06,(tg.t1-tg.t0)*.3)):.15;recent=recent.filter(x=>now-x.t<win);if(recent.length)fr.m=med(recent.map(x=>x.m))}else recent=[];
   frames.push(fr);
+  if(now-lastEst>1.5){lastEst=now;const est=estimateLag(frames.filter(f=>f.t>now-8));if(est!=null)VL=VL+(est-VL)*.5}
+  const tgV=fr.m!=null?(strictAt(vt(fr))||tg):tg;
   $('rTarget').textContent=tg?nm(tg.m):'–';$('rSyl').textContent=tg&&tg.syl?tg.syl:'–';
-  if(fr.m!=null){$('rNote').textContent=nm(fr.m);if(tg){const c=err(fr.m,tg.m);$('rCents').textContent=(c>0?'+':'')+Math.round(c)+' cents';$('needle').style.left=`calc(${50+Math.max(-50,Math.min(50,c/2))}% - 2px)`}}
+  if(fr.m!=null){$('rNote').textContent=nm(fr.m);if(tgV){const c=err(fr.m,tgV.m);$('rCents').textContent=(c>0?'+':'')+Math.round(c)+' cents';$('needle').style.left=`calc(${50+Math.max(-50,Math.min(50,c/2))}% - 2px)`}}
   draw(now);if(now>seq.end){const e=cur;stop();report(e);return}raf=requestAnimationFrame(loop)}
 function fit(now){const vis=seq.targets.filter(x=>x.t1>now-2&&x.t0<now+4),ms=(vis.length?vis:seq.targets.slice(0,10)).map(x=>x.m);
   const lo=Math.min(...ms)-3,hi=Math.max(...ms)+3;yLo+=(lo-yLo)*.08;yHi+=(hi-yHi)*.08;if(!run){yLo=lo;yHi=hi}}
@@ -373,9 +384,9 @@ function draw(now){if(!seq||!seq.targets.length)return;const d=devicePixelRatio|
     g2.beginPath();g2.roundRect(x0+1,Y(x.m)-sh*.4,Math.max(4,x1-x0-2),sh*.8,4);g2.fill();
     if(x.syl&&x1-x0>26){g2.fillStyle=col.muted;g2.fillText(x.syl,x0+3,Y(x.m)-sh*.4-8)}});
   g2.lineWidth=3;g2.lineCap='round';let prev=null;
-  for(const f of frames){if(f.t<now-1.6||f.m==null){prev=null;continue}
-    const tg=activeAt(f.t)||seq.targets.reduce((a,b)=>Math.abs(b.t0-f.t)<Math.abs(a.t0-f.t)?b:a);const c=err(f.m,tg.m);
-    const pt=[X(f.t),Y(tg.m+c/100)];if(prev){g2.strokeStyle=Math.abs(c)<=25?'#16a38c':Math.abs(c)<=50?'#e39a2d':'#ff4d3d';g2.beginPath();g2.moveTo(...prev);g2.lineTo(...pt);g2.stroke()}prev=pt}
+  for(const f of frames){const ft=vt(f);if(ft<now-1.6||f.m==null){prev=null;continue}
+    const tg=activeAt(ft)||seq.targets.reduce((a,b)=>Math.abs(b.t0-ft)<Math.abs(a.t0-ft)?b:a);const c=err(f.m,tg.m);
+    const pt=[X(ft),Y(tg.m+c/100)];if(prev){g2.strokeStyle=Math.abs(c)<=25?'#16a38c':Math.abs(c)<=50?'#e39a2d':'#ff4d3d';g2.beginPath();g2.moveTo(...prev);g2.lineTo(...pt);g2.stroke()}prev=pt}
   g2.fillStyle='#ff4d3d';g2.fillRect(W*.3-1,0,2,H);
   if(!run){g2.fillStyle=col.muted;g2.font='14px Inter,sans-serif';g2.textAlign='center';g2.fillText('Press Start, then sing along with the piano',W/2,24);g2.textAlign='left'}}
 
@@ -392,7 +403,8 @@ function scoreNotes(T,frames){return T.map((x,i)=>{const d=x.t1-x.t0,w0=x.t0+Mat
   if(fs.length<3)return {...x,miss:true};const cs=fs.map(f=>err(f.m,x.m)),m=med(cs);
   return {...x,med:m,sd:sd(cs.filter(c=>Math.abs(c-m)<150)),clar:mean(fs.map(f=>f.c)),ring:mean(fs.map(f=>f.ring))}})}
 function report(e){
-  const res=scoreNotes(seq.targets,frames);
+  const est=estimateLag(frames);if(est!=null)VL=est;store.set('vp_vlag',VL);
+  const res=scoreNotes(seq.targets,frames.map(f=>({...f,t:vt(f)})));
   const ok=res.filter(r=>!r.miss),tot=res.length;
   const inT=ok.filter(r=>Math.abs(r.med)<=25).length,pct=tot?Math.round(inT/tot*100):0;
   const tone=ok.filter(r=>!r.trill),allTr=ok.length&&!tone.length;
