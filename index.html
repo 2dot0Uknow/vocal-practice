@@ -107,7 +107,7 @@ ul.tips{padding-left:20px;margin:6px 0}ul.tips li{margin:6px 0}
     <div class="row" style="margin-top:12px"><button class="pri" id="goBtn">Start</button><button class="ghost" id="backBtn">Back</button></div>
     <label for="vol">Piano volume</label><input id="vol" type="range" min="0" max="1" step="0.05" value="0.6" style="padding:0">
     <label for="micSel">Microphone</label>
-    <div class="row"><select id="micSel" style="flex:1 1 200px"><option value="">Automatic (phone's choice)</option></select><button class="ghost" id="micScan" style="flex:0 0 auto">Find mics</button></div>
+    <div class="row" id="micRow"><select id="micSel" style="flex:1 1 200px"><option value="">Automatic (phone's choice)</option></select><button class="ghost" id="micScan" style="flex:0 0 auto">Find mics</button></div>
     <p class="note" id="micNow"></p>
     <label for="sync">Sync: <span id="syncV"></span>. Slide right if the blocks reach the red line before you hear the piano</label><input id="sync" type="range" min="0" max="500" step="10" value="100" style="padding:0">
   </section>
@@ -309,7 +309,12 @@ let micId=store.get('vp_mic','');
 async function listMics(ask){const md=navigator.mediaDevices;if(!md||!md.enumerateDevices)return;
   let ds=(await md.enumerateDevices()).filter(d=>d.kind=='audioinput');
   if(ask&&ds.every(d=>!d.label)){try{const st=await md.getUserMedia({audio:true});st.getTracks().forEach(t=>t.stop());ds=(await md.enumerateDevices()).filter(d=>d.kind=='audioinput')}catch(e){$('micNow').textContent='Allow microphone access to see the choices.';return}}
-  const seen=new Set(),opts=ds.filter(d=>d.deviceId&&d.deviceId!='default'&&d.deviceId!='communications'&&!seen.has(d.deviceId)&&seen.add(d.deviceId));
+  const seen=new Set(),opts=ds.filter(d=>d.deviceId&&d.deviceId!='default'&&d.deviceId!='communications'&&!/^default/i.test(d.label)&&!seen.has(d.deviceId)&&seen.add(d.deviceId));
+  /* Chrome on Android only exposes "Default audio input device": no real choice, so explain instead of showing a picker */
+  const named=ds.filter(d=>d.label).length>0;
+  if(named&&opts.length<2){$('micRow').hidden=true;micId='';store.set('vp_mic','');
+    $('micNow').textContent='Your phone picks the mic for web apps: with Bluetooth earbuds connected it uses their mic, otherwise the phone\'s own mic (or wired headphones\' mic if they have one). To use the phone mic, disconnect Bluetooth and use wired headphones.';return}
+  $('micRow').hidden=false;
   $('micSel').innerHTML='<option value="">Automatic (phone\'s choice)</option>'+opts.map((d,i)=>{const l=d.label||'Microphone '+(i+1);return `<option value="${esc(d.deviceId)}">${esc(micKind(l))}: ${esc(l)}</option>`}).join('');
   $('micSel').value=opts.some(d=>d.deviceId==micId)?micId:'';
   if(ask&&!opts.length)$('micNow').textContent='No separate mics found. Connect your headphones and tap "Find mics" again.';
@@ -323,7 +328,7 @@ async function mic(){if(stream)return true;
   try{stream=await navigator.mediaDevices.getUserMedia({audio:micId?{...base,deviceId:{exact:micId}}:base})}
   catch(e){if(!micId)return false;/* chosen mic is gone: fall back to automatic */
     try{stream=await navigator.mediaDevices.getUserMedia({audio:base});micId='';store.set('vp_mic','');$('micSel').value=''}catch(e2){return false}}
-  {const tr=stream.getAudioTracks()[0],l=tr&&tr.label||'';$('micNow').textContent=l?`Listening with ${micKind(l).toLowerCase()=='mic'?'':micKind(l)+': '}${l}`:'';listMics(false)}
+  listMics(false).then(()=>{const tr=stream&&stream.getAudioTracks()[0],l=tr&&tr.label||'';if(l&&!/^default/i.test(l)&&!$('micRow').hidden)$('micNow').textContent=`Listening with ${micKind(l)=='Mic'?'':micKind(l)+': '}${l}`})
   const src=ac.createMediaStreamSource(stream),hp=ac.createBiquadFilter();hp.type='highpass';hp.frequency.value=60;
   lpN=ac.createBiquadFilter();lpN.type='lowpass';lpN.frequency.value=8000;gainN=ac.createGain();
   an=ac.createAnalyser();an.fftSize=4096;an.smoothingTimeConstant=0;src.connect(hp).connect(lpN).connect(gainN).connect(an);
