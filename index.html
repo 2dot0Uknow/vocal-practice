@@ -106,6 +106,7 @@ ul.tips{padding-left:20px;margin:6px 0}ul.tips li{margin:6px 0}
     <div class="fig"><canvas id="cv"></canvas></div>
     <div class="row" style="margin-top:12px"><button class="pri" id="goBtn">Start</button><button class="ghost" id="backBtn">Back</button></div>
     <label for="vol">Piano volume</label><input id="vol" type="range" min="0" max="1" step="0.05" value="0.6" style="padding:0">
+    <label for="sync">Sync: <span id="syncV"></span>. Slide right if the blocks reach the red line before you hear the piano</label><input id="sync" type="range" min="0" max="500" step="10" value="100" style="padding:0">
   </section>
 
   <section id="rep">
@@ -323,10 +324,15 @@ function spectral(f0){an.getFloatFrequencyData(fbuf);const bw=ac.sampleRate/an.f
 
 /* ---------- practice ---------- */
 let cur=null,seq=null,frames=[],run=false,raf=0,yLo=45,yHi=60,col={};
+/* L = delay before you hear the piano (output latency); Lin = mic input delay */
+let L=store.get('vp_lat',null),Lin=.02;
+const clk=()=>ac.currentTime-L;
+const showSync=()=>{$('sync').value=Math.round((L??.1)*1000);$('syncV').textContent=L==null?'auto':Math.round(L*1000)+' ms'};
+$('sync').oninput=()=>{L=+$('sync').value/1000;store.set('vp_lat',L);showSync()};showSync();
 const cv=$('cv'),g2=cv.getContext('2d');
 const probe=document.createElement('span');probe.style.display='none';document.body.appendChild(probe);
 function readCol(){const g=v=>{probe.style.color=`var(${v})`;return getComputedStyle(probe).color};col={ink:g('--ink'),bar:g('--bar'),line:g('--line'),muted:g('--muted')}}
-const ro=new ResizeObserver(()=>{const d=devicePixelRatio||1;cv.width=cv.clientWidth*d;cv.height=cv.clientHeight*d;readCol();draw(run?ac.currentTime:0)});ro.observe(cv);
+const ro=new ResizeObserver(()=>{const d=devicePixelRatio||1;cv.width=cv.clientWidth*d;cv.height=cv.clientHeight*d;readCol();draw(run?clk():0)});ro.observe(cv);
 function openPrac(e){cur=e;go('prac');$('pName').textContent=e.name+(queue.length?`  ·  ${queue.length} more after this`:'');$('pInfo').textContent=desc(e);seq=build(e,0);frames=[];$('goBtn').textContent='Start';$('rSyl').textContent=seq.targets[0]?.syl||'–';fit(0);draw(0)}
 function build(e,t0){const spb=60/e.bpm,notes=parsePat(e.pat),rs=rootsOf(e,notes),passes=e.vows.length?e.vows:[''],targets=[];const plays=[];let t=t0;
   rs.forEach((r,k)=>{plays.push({m:[r,r+4,r+7],t,d:spb*1.5});t+=spb*2;
@@ -336,16 +342,19 @@ const err=(m,tm)=>{let c=(m-tm)*100;return c-1200*Math.round(c/1200)};
 const activeAt=t=>seq.targets.find(x=>t>=x.t0&&t<x.t1+.15);
 $('goBtn').onclick=async()=>{if(run){stop();return}audio();
   if(!await mic()){$('rCents').textContent='Mic unavailable. Allow access, and open from the https:// address.';return}
+  if(L==null){const auto=(ac.outputLatency||0)+(ac.baseLatency||0);L=Math.min(.5,auto>.01?auto:.1)}
+  try{Lin=stream.getAudioTracks()[0].getSettings().latency||.02}catch(e){Lin=.02}
+  showSync();
   const t0=ac.currentTime+.6;seq=build(cur,t0);frames=[];mode=null;recent=[];seq.plays.forEach(p=>p.m.forEach(m=>piano(m,p.t,p.d)));
   run=true;$('goBtn').textContent='Stop';loop()};
 $('backBtn').onclick=()=>{stop();queue=[];go('lib');renderLib()};
 function stop(){if(!run)return;run=false;cancelAnimationFrame(raf);if(ac){master&&master.disconnect();master=null;ac.close();ac=null;stream&&stream.getTracks().forEach(t=>t.stop());stream=null}$('goBtn').textContent='Start'}
 let recent=[];
-function loop(){if(!run)return;an.getFloatTimeDomainData(buf);const now=ac.currentTime;
+function loop(){if(!run)return;an.getFloatTimeDomainData(buf);const now=clk();
   const tg=activeAt(now)||seq.targets.find(x=>x.t0>now),tr=!!(tg&&tg.trill);setMode(tr);
   let p;if(tr){for(let i=0;i<2048;i++)dec[i]=(buf[2*i]+buf[2*i+1])/2;p=detect(dec,ac.sampleRate/2,{gate:.004,min:.4})}
   else p=detect(buf.subarray(2048),ac.sampleRate);
-  const fr={t:now,m:null,tr};
+  const fr={t:now-Lin,m:null,tr};
   if(p){fr.m=fToM(p.f);fr.c=p.c;Object.assign(fr,spectral(p.f))}
   if(tr){/* smooth over the flutter: median of the last ~0.15 s, and bridge short dropouts */
     if(fr.m!=null)recent.push({t:now,m:fr.m});recent=recent.filter(x=>now-x.t<.15);if(recent.length)fr.m=med(recent.map(x=>x.m))}else recent=[];
