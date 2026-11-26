@@ -118,7 +118,10 @@ ul.tips{padding-left:20px;margin:6px 0}ul.tips li{margin:6px 0}
     <label for="micSel">Microphone</label>
     <div class="row" id="micRow"><select id="micSel" style="flex:1 1 200px"><option value="">Automatic (phone's choice)</option></select><button class="ghost" id="micScan" style="flex:0 0 auto">Find mics</button></div>
     <p class="note" id="micNow"></p>
-    <label for="sync">Sync: <span id="syncV"></span>. Slide right if the blocks reach the blue line before you hear the piano</label><input id="sync" type="range" min="0" max="500" step="10" value="100" style="padding:0">
+    <details style="margin-top:6px"><summary>Fine-tune the picture (optional)</summary>
+      <p class="note" style="margin-top:0">Your voice line lines itself up automatically. This only shifts the moving blocks to match when you hear the piano. Slide right if a block reaches the blue line before you hear its note.</p>
+      <label for="sync">Picture delay: <span id="syncV"></span></label><input id="sync" type="range" min="0" max="500" step="10" value="100" style="padding:0">
+    </details>
   </section>
 
   <section id="rep">
@@ -393,7 +396,7 @@ const probe=document.createElement('span');probe.style.display='none';document.b
 function readCol(){const g=v=>{probe.style.color=`var(${v})`;return getComputedStyle(probe).color};col={ink:g('--ink'),bar:g('--bar'),line:g('--line'),muted:g('--muted'),pri:g('--pri'),on:g('--on'),near:g('--near'),far:g('--far')}}
 const ro=new ResizeObserver(()=>{const d=devicePixelRatio||1;cv.width=cv.clientWidth*d;cv.height=cv.clientHeight*d;readCol();draw(run?clk():0)});ro.observe(cv);
 function openPrac(e){cur=e;navTo('prac');$('pName').textContent=e.name+(queue.length?`  ·  ${queue.length} more after this`:'');$('pInfo').textContent=desc(e);seq=build(e,0);frames=[];$('goBtn').textContent='Start';$('rSyl').textContent=seq.targets[0]?.syl||'–';fit(0);draw(0)}
-const CUE_GAP=.5; /* extra seconds of space between the cue chord's slot and the round's first note */
+const CUE_GAP=1; /* extra seconds of space between the cue chord's slot and the round's first note */
 function build(e,t0){const spb=60/e.bpm,notes=parsePat(e.pat),rs=rootsOf(e,notes),passes=e.vows.length?e.vows:[''],targets=[];const plays=[];let t=t0;
   rs.forEach((r,k)=>{plays.push({m:[r,r+4,r+7],t,d:spb*1.5});t+=spb*2+CUE_GAP;
     passes.forEach((v,p)=>{if(p)t+=spb;notes.forEach(n=>{const d=spb*(n.h?e.hold:1);plays.push({m:[r+n.s],t,d});const syl=(e.rootVow&&n.deg==1)?e.rootVow:v;targets.push({m:r+n.s,t0:t,t1:t+d,round:k,pass:p,syl,trill:isTrill(syl)});t+=d})});t+=spb});
