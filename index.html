@@ -17,6 +17,12 @@
   --pri:light-dark(#2f6fe4,#7ea6ff);--sun:#ffb547;--on:light-dark(#17a673,#3fd19a);--near:light-dark(#e9a91c,#f4c152);--far:light-dark(#9c88e8,#b5a6f5);--bar:light-dark(#e3ebf8,#24324b);--glow:light-dark(#fff1d6,#1b2740)}
 :root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
 *{box-sizing:border-box;min-width:0}[hidden]{display:none!important}
+input[type=range]{-webkit-appearance:none;appearance:none;height:44px;padding:0;border:0;background:transparent;--p:50%}
+input[type=range]::-webkit-slider-runnable-track{height:8px;border-radius:4px;background:linear-gradient(90deg,var(--pri) var(--p),var(--line) var(--p))}
+input[type=range]::-moz-range-track{height:8px;border-radius:4px;background:var(--line)}
+input[type=range]::-moz-range-progress{height:8px;border-radius:4px;background:var(--pri)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:26px;height:26px;margin-top:-9px;border-radius:50%;background:var(--panel);border:3px solid var(--pri);box-shadow:0 1px 4px rgb(0 0 0/.2)}
+input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:var(--panel);border:3px solid var(--pri)}
 body{margin:0;background:linear-gradient(180deg,var(--glow) 0,var(--bg) 320px) no-repeat,var(--bg);color:var(--ink);font:16px/1.5 Inter,system-ui,sans-serif;overflow-x:clip;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
 .wrap{max-width:640px;margin:0 auto;padding:18px 16px 40px}
 h1,h2{font-family:Nunito,Inter,sans-serif;font-weight:800;line-height:1.08;margin:0;text-wrap:balance}
@@ -115,9 +121,6 @@ ul.tips{padding-left:20px;margin:6px 0}ul.tips li{margin:6px 0}
     <div class="fig"><canvas id="cv"></canvas></div>
     <div class="row" style="margin-top:12px"><button class="pri" id="goBtn">Start</button><button class="ghost" id="backBtn">Back</button></div>
     <label for="vol">Piano volume</label><input id="vol" type="range" min="0" max="1" step="0.05" value="0.6" style="padding:0">
-    <label for="micSel">Microphone</label>
-    <div class="row" id="micRow"><select id="micSel" style="flex:1 1 200px"><option value="">Automatic (phone's choice)</option></select><button class="ghost" id="micScan" style="flex:0 0 auto">Find mics</button></div>
-    <p class="note" id="micNow"></p>
     <details style="margin-top:6px"><summary>Fine-tune the picture (optional)</summary>
       <p class="note" style="margin-top:0">Your voice line lines itself up automatically. This only shifts the moving blocks to match when you hear the piano. Slide right if a block reaches the blue line before you hear its note.</p>
       <label for="sync">Picture delay: <span id="syncV"></span></label><input id="sync" type="range" min="0" max="500" step="10" value="100" style="padding:0">
@@ -338,32 +341,9 @@ function stopPrev(){const p=pv;pv=null;if(!p)return;try{const t=p.g.context.curr
 function piano(m,t,d,out=master,os){const f=hz(m),g=ac.createGain();g.connect(out);
   g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.3,t+.006);g.gain.exponentialRampToValueAtTime(.11,t+.3);g.gain.exponentialRampToValueAtTime(.0005,t+d+.6);
   [1,2,3,4,5,6].forEach(n=>{const o=ac.createOscillator(),og=ac.createGain();o.frequency.value=f*n*(1+.0004*n*n);og.gain.value=1/n**1.6;o.connect(og).connect(g);o.start(t);o.stop(t+d+.7);os&&os.push(o)})}
-/* ---------- microphone picker ---------- */
-const micKind=l=>/usb|wired|jack|line in|external/i.test(l)?'Wired':/bluetooth|headset(?! earpiece)|hands-?free|buds|airpods|\bsco\b|\bbt\b/i.test(l)?'Bluetooth':/headphone/i.test(l)?'Wired':/built-?in|phone|internal|bottom|top|back|front|speaker|earpiece|default|microphone/i.test(l)?'Phone mic':'Mic';
-let micId=store.get('vp_mic','');
-async function listMics(ask){const md=navigator.mediaDevices;if(!md||!md.enumerateDevices)return;
-  let ds=(await md.enumerateDevices()).filter(d=>d.kind=='audioinput');
-  if(ask&&ds.every(d=>!d.label)){try{const st=await md.getUserMedia({audio:true});st.getTracks().forEach(t=>t.stop());ds=(await md.enumerateDevices()).filter(d=>d.kind=='audioinput')}catch(e){$('micNow').textContent='Allow microphone access to see the choices.';return}}
-  const seen=new Set(),opts=ds.filter(d=>d.deviceId&&d.deviceId!='default'&&d.deviceId!='communications'&&!/^default/i.test(d.label)&&!seen.has(d.deviceId)&&seen.add(d.deviceId));
-  /* Chrome on Android only exposes "Default audio input device": no real choice, so explain instead of showing a picker */
-  const named=ds.filter(d=>d.label).length>0;
-  if(named&&opts.length<2){$('micRow').hidden=true;micId='';store.set('vp_mic','');
-    $('micNow').textContent='Your phone picks the mic for web apps: with Bluetooth earbuds connected it uses their mic, otherwise the phone\'s own mic (or wired headphones\' mic if they have one). To use the phone mic, disconnect Bluetooth and use wired headphones.';return}
-  $('micRow').hidden=false;
-  $('micSel').innerHTML='<option value="">Automatic (phone\'s choice)</option>'+opts.map((d,i)=>{const l=d.label||'Microphone '+(i+1);return `<option value="${esc(d.deviceId)}">${esc(micKind(l))}: ${esc(l)}</option>`}).join('');
-  $('micSel').value=opts.some(d=>d.deviceId==micId)?micId:'';
-  if(ask&&!opts.length)$('micNow').textContent='No separate mics found. Connect your headphones and tap "Find mics" again.';
-  else if(ask)$('micNow').textContent=`Found ${opts.length} mic${opts.length==1?'':'s'}. Pick one, then press Start.`}
-$('micScan').onclick=()=>listMics(true);
-$('micSel').onchange=()=>{micId=$('micSel').value;store.set('vp_mic',micId);$('micNow').textContent=run?'The new mic will be used next time you press Start.':'Saved. It will be used when you press Start.'};
-if(navigator.mediaDevices)navigator.mediaDevices.addEventListener?.('devicechange',()=>listMics(false));
-listMics(false);
 async function mic(){if(stream)return true;
   const base={echoCancellation:false,noiseSuppression:false,autoGainControl:false};
-  try{stream=await navigator.mediaDevices.getUserMedia({audio:micId?{...base,deviceId:{exact:micId}}:base})}
-  catch(e){if(!micId)return false;/* chosen mic is gone: fall back to automatic */
-    try{stream=await navigator.mediaDevices.getUserMedia({audio:base});micId='';store.set('vp_mic','');$('micSel').value=''}catch(e2){return false}}
-  listMics(false).then(()=>{const tr=stream&&stream.getAudioTracks()[0],l=tr&&tr.label||'';if(l&&!/^default/i.test(l)&&!$('micRow').hidden)$('micNow').textContent=`Listening with ${micKind(l)=='Mic'?'':micKind(l)+': '}${l}`})
+  try{stream=await navigator.mediaDevices.getUserMedia({audio:base})}catch(e){return false}
   const src=ac.createMediaStreamSource(stream),hp=ac.createBiquadFilter();hp.type='highpass';hp.frequency.value=60;
   lpN=ac.createBiquadFilter();lpN.type='lowpass';lpN.frequency.value=8000;gainN=ac.createGain();
   an=ac.createAnalyser();an.fftSize=4096;an.smoothingTimeConstant=0;src.connect(hp).connect(lpN).connect(gainN).connect(an);
@@ -389,7 +369,7 @@ let cur=null,seq=null,frames=[],run=false,raf=0,yLo=45,yHi=60,col={};
 /* L = delay before you hear the piano (output latency); Lin = mic input delay */
 let L=store.get('vp_lat',null),Lin=.02;
 const clk=()=>ac.currentTime-L;
-const showSync=()=>{$('sync').value=Math.round((L??.1)*1000);$('syncV').textContent=L==null?'auto':Math.round(L*1000)+' ms'};
+const showSync=()=>{$('sync').value=Math.round((L??.1)*1000);fillRange($('sync'));$('syncV').textContent=L==null?'auto':Math.round(L*1000)+' ms'};
 $('sync').oninput=()=>{L=+$('sync').value/1000;store.set('vp_lat',L);showSync()};showSync();
 const cv=$('cv'),g2=cv.getContext('2d');
 const probe=document.createElement('span');probe.style.display='none';document.body.appendChild(probe);
@@ -530,6 +510,9 @@ const THEMES=[['','Match phone'],['light','Light'],['dark','Dark']];let th=store
 const applyTheme=()=>{th?document.documentElement.setAttribute('data-theme',th):document.documentElement.removeAttribute('data-theme');$('themeBtn').textContent='Theme';$('themeBtn').setAttribute('aria-label','Theme: '+THEMES.find(x=>x[0]==th)[1]+'. Tap to change')};
 $('themeBtn').onclick=()=>{th=THEMES[(THEMES.findIndex(x=>x[0]==th)+1)%3][0];store.set('vp_theme',th);applyTheme();readCol();draw(run?clk():0)};
 applyTheme();
+/* range sliders: fill the track left of the thumb */
+function fillRange(r){r.style.setProperty('--p',((r.value-r.min)/(r.max-r.min)*100)+'%')}
+document.querySelectorAll('input[type=range]').forEach(r=>{fillRange(r);r.addEventListener('input',()=>fillRange(r))});
 new MutationObserver(readCol).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
 renderLib();
 }
