@@ -246,8 +246,17 @@ $('photo').onchange=async ev=>{const f=ev.target.files[0];ev.target.value='';if(
 
 /* ---------- library ---------- */
 let queue=[];
-const go=id=>{document.querySelectorAll('section').forEach(s=>s.classList.toggle('on',s.id==id));window.scrollTo(0,0)};
-document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>{stop();queue=[];go(b.dataset.go);renderLib()});
+let scr='lib';
+const go=id=>{if(scr=='add'&&id!='add')stopPrev();scr=id;document.querySelectorAll('section').forEach(s=>s.classList.toggle('on',s.id==id));window.scrollTo(0,0)};
+/* history: home has no entry state; every other screen is an entry {s:id,d:depth} with hash #id */
+const hdepth=()=>(history.state&&history.state.d)||0;
+function navTo(id){(scr=='lib'?history.pushState:history.replaceState).call(history,{s:id,d:1},'','#'+id);go(id)}
+function goHome(){stop();queue=[];const d=hdepth();if(d>0)history.go(-d);else{go('lib');renderLib()}}
+addEventListener('popstate',()=>{const s=history.state,id=s&&s.s||'lib';stop();stopPrev();
+  if(id=='lib'){queue=[];go('lib');renderLib()}
+  else{queue=[];history.replaceState(null,'',location.pathname+location.search);go('lib');renderLib()}});
+if(location.hash||history.state)history.replaceState(null,'',location.pathname+location.search);
+document.querySelectorAll('[data-go]').forEach(b=>b.onclick=goHome);
 const desc=e=>`${e.pat.replace(/-/g,' ')}${e.vows.length?' · '+e.vows.join(' / '):''}${e.rootVow?' (root: '+e.rootVow+')':''} · ${nm(e.start)}–${nm(e.end)}${e.top?' range':''} · ${e.bpm} bpm`;
 /* journey list: newest 3, then 6 more each time "Load more" is tapped */
 let shown=3;
@@ -271,7 +280,7 @@ $('allBtn').onclick=()=>{queue=exs.slice(1);openPrac(exs[0])};
 
 /* ---------- review / edit ---------- */
 let review=[],editMode=false;
-function openEdit(e){editMode=!!e;go('add');$('addTitle').textContent=e?'Edit exercise':'Add your coach\'s exercises';$('inBox').hidden=!!e;
+function openEdit(e){editMode=!!e;navTo('add');$('addTitle').textContent=e?'Edit exercise':'Add your coach\'s exercises';$('inBox').hidden=!!e;
   $('dStart').value=nm(defR.start);$('dEnd').value=nm(defR.end);review=e?[{...e,vows:[...e.vows]}]:[];renderEds()}
 $('newBtn').onclick=()=>{$('notes').value='';$('ocr').hidden=true;openEdit(null)};
 const SEL=(k,opts,v)=>`<select data-k="${k}">${opts.map(([a,b])=>`<option value="${a}"${String(a)==String(v)?' selected':''}>${b}</option>`).join('')}</select>`;
@@ -297,9 +306,9 @@ function renderEds(){
   $('saveBtn').textContent=editMode?'Save changes':`Save ${review.length} exercise${review.length==1?'':'s'}`;
   $('eds').querySelectorAll('.ed').forEach(card=>{const i=+card.dataset.i;
     card.addEventListener('input',()=>{const e=readEd(card);if(e)review[i]=e});card.addEventListener('change',()=>{const e=readEd(card);if(e)review[i]=e});readEd(card);
-    card.querySelector('[data-a=hear]').onclick=()=>{const e=readEd(card);if(!e)return;audio();const t=ac.currentTime+.1,spb=60/e.bpm,notes=parsePat(e.pat),r=rootsOf(e,notes)[0];let tt=t;notes.forEach((n,j)=>{const d=spb*(n.h?e.hold:1);piano(r+n.s,tt,d);tt+=d})};
+    card.querySelector('[data-a=hear]').onclick=()=>{const e=readEd(card);if(!e)return;audio();stopPrev();const out=ac.createGain();out.connect(master);pv={g:out,os:[]};const t=ac.currentTime+.1,spb=60/e.bpm,notes=parsePat(e.pat),r=rootsOf(e,notes)[0];let tt=t;notes.forEach((n,j)=>{const d=spb*(n.h?e.hold:1);piano(r+n.s,tt,d,out,pv.os);tt+=d})};
     const del=card.querySelector('[data-a=del]');del.onclick=()=>{
-      if(editMode){if(del.dataset.sure){exs=exs.filter(x=>x.id!=review[0].id);saveExs();go('lib');renderLib()}else{del.dataset.sure=1;del.textContent='Tap again to delete'}return}
+      if(editMode){if(del.dataset.sure){exs=exs.filter(x=>x.id!=review[0].id);saveExs();goHome()}else{del.dataset.sure=1;del.textContent='Tap again to delete'}return}
       review.splice(i,1);renderEds()}})}
 function readEd(card){const v=k=>card.querySelector(`[data-k=${k}]`),sum=card.querySelector('.sum');
   const s=toMidi(v('start').value),en=toMidi(v('end').value),p=v('pat').value.trim(),notes=parsePat(p);
@@ -312,7 +321,7 @@ function readEd(card){const v=k=>card.querySelector(`[data-k=${k}]`),sum=card.qu
 $('parseBtn').onclick=()=>{const ds=toMidi($('dStart').value),de=toMidi($('dEnd').value);if(ds!=null&&de!=null){defR={start:ds,end:de};store.set('vp_def',defR)}
   if(!$('notes').value.trim())return;review=parseAll($('notes').value);renderEds();if(review.length)$('eds').scrollIntoView({behavior:'smooth'})};
 $('saveBtn').onclick=()=>{const cards=[...$('eds').querySelectorAll('.ed')],out=cards.map(readEd);if(out.some(x=>!x))return;
-  out.forEach(e=>{const i=exs.findIndex(x=>x.id==e.id);i>=0?exs[i]=e:exs.push(e)});saveExs();go('lib');renderLib()};
+  out.forEach(e=>{const i=exs.findIndex(x=>x.id==e.id);i>=0?exs[i]=e:exs.push(e)});saveExs();goHome()};
 
 /* ---------- audio ---------- */
 let ac,master,an,buf,fbuf,stream,lpN,gainN,dec;
@@ -320,9 +329,12 @@ const TRILL=/trill|roll|bubble|raspberr|brr|lip/i;
 const isTrill=s=>TRILL.test(s||'');
 function audio(){if(!ac){ac=new (window.AudioContext||window.webkitAudioContext)();const lp=ac.createBiquadFilter();lp.type='lowpass';lp.frequency.value=5000;master=ac.createGain();master.gain.value=+$('vol').value;master.connect(lp).connect(ac.destination)}if(ac.state=='suspended')ac.resume()}
 $('vol').oninput=()=>{if(master)master.gain.value=+$('vol').value};
-function piano(m,t,d){const f=hz(m),g=ac.createGain();g.connect(master);
+/* "Hear one round" preview: own gain between the notes and master so a new tap can cut the old one */
+let pv=null;
+function stopPrev(){const p=pv;pv=null;if(!p)return;try{const t=p.g.context.currentTime;p.g.gain.cancelScheduledValues(t);p.g.gain.setValueAtTime(p.g.gain.value,t);p.g.gain.linearRampToValueAtTime(0,t+.03);p.os.forEach(o=>{try{o.stop(t+.05)}catch(e){}});setTimeout(()=>{try{p.g.disconnect()}catch(e){}},120)}catch(e){}}
+function piano(m,t,d,out=master,os){const f=hz(m),g=ac.createGain();g.connect(out);
   g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.3,t+.006);g.gain.exponentialRampToValueAtTime(.11,t+.3);g.gain.exponentialRampToValueAtTime(.0005,t+d+.6);
-  [1,2,3,4,5,6].forEach(n=>{const o=ac.createOscillator(),og=ac.createGain();o.frequency.value=f*n*(1+.0004*n*n);og.gain.value=1/n**1.6;o.connect(og).connect(g);o.start(t);o.stop(t+d+.7)})}
+  [1,2,3,4,5,6].forEach(n=>{const o=ac.createOscillator(),og=ac.createGain();o.frequency.value=f*n*(1+.0004*n*n);og.gain.value=1/n**1.6;o.connect(og).connect(g);o.start(t);o.stop(t+d+.7);os&&os.push(o)})}
 /* ---------- microphone picker ---------- */
 const micKind=l=>/usb|wired|jack|line in|external/i.test(l)?'Wired':/bluetooth|headset(?! earpiece)|hands-?free|buds|airpods|\bsco\b|\bbt\b/i.test(l)?'Bluetooth':/headphone/i.test(l)?'Wired':/built-?in|phone|internal|bottom|top|back|front|speaker|earpiece|default|microphone/i.test(l)?'Phone mic':'Mic';
 let micId=store.get('vp_mic','');
@@ -380,7 +392,7 @@ const cv=$('cv'),g2=cv.getContext('2d');
 const probe=document.createElement('span');probe.style.display='none';document.body.appendChild(probe);
 function readCol(){const g=v=>{probe.style.color=`var(${v})`;return getComputedStyle(probe).color};col={ink:g('--ink'),bar:g('--bar'),line:g('--line'),muted:g('--muted'),pri:g('--pri'),on:g('--on'),near:g('--near'),far:g('--far')}}
 const ro=new ResizeObserver(()=>{const d=devicePixelRatio||1;cv.width=cv.clientWidth*d;cv.height=cv.clientHeight*d;readCol();draw(run?clk():0)});ro.observe(cv);
-function openPrac(e){cur=e;go('prac');$('pName').textContent=e.name+(queue.length?`  ·  ${queue.length} more after this`:'');$('pInfo').textContent=desc(e);seq=build(e,0);frames=[];$('goBtn').textContent='Start';$('rSyl').textContent=seq.targets[0]?.syl||'–';fit(0);draw(0)}
+function openPrac(e){cur=e;navTo('prac');$('pName').textContent=e.name+(queue.length?`  ·  ${queue.length} more after this`:'');$('pInfo').textContent=desc(e);seq=build(e,0);frames=[];$('goBtn').textContent='Start';$('rSyl').textContent=seq.targets[0]?.syl||'–';fit(0);draw(0)}
 function build(e,t0){const spb=60/e.bpm,notes=parsePat(e.pat),rs=rootsOf(e,notes),passes=e.vows.length?e.vows:[''],targets=[];const plays=[];let t=t0;
   rs.forEach((r,k)=>{plays.push({m:[r,r+4,r+7],t,d:spb*1.5});t+=spb*2;
     passes.forEach((v,p)=>{if(p)t+=spb;notes.forEach(n=>{const d=spb*(n.h?e.hold:1);plays.push({m:[r+n.s],t,d});const syl=(e.rootVow&&n.deg==1)?e.rootVow:v;targets.push({m:r+n.s,t0:t,t1:t+d,round:k,pass:p,syl,trill:isTrill(syl)});t+=d})});t+=spb});
@@ -403,7 +415,7 @@ $('goBtn').onclick=async()=>{if(run){stop();return}audio();
   showSync();
   const t0=ac.currentTime+.6;seq=build(cur,t0);frames=[];mode=null;recent=[];lastEst=0;seq.plays.forEach(p=>p.m.forEach(m=>piano(m,p.t,p.d)));
   run=true;$('goBtn').textContent='Stop';loop()};
-$('backBtn').onclick=()=>{stop();queue=[];go('lib');renderLib()};
+$('backBtn').onclick=goHome;
 function stop(){if(!run)return;run=false;cancelAnimationFrame(raf);if(ac){master&&master.disconnect();master=null;ac.close();ac=null;stream&&stream.getTracks().forEach(t=>t.stop());stream=null}$('goBtn').textContent='Start'}
 let recent=[];
 function loop(){if(!run)return;an.getFloatTimeDomainData(buf);const now=clk();
@@ -506,7 +518,7 @@ function report(e){
   if(ok.length){const h=store.get('vp_hist',[]);h.unshift({name:e.name,pct,ts:Date.now(),date:new Date().toLocaleDateString(undefined,{month:'short',day:'numeric'})});store.set('vp_hist',h.slice(0,200));shown=3}
   $('trNote').hidden=!res.some(r=>r.trill);
   $('nextBtn').hidden=!queue.length;if(queue.length)$('nextBtn').textContent='Next: '+queue[0].name;
-  go('rep')}
+  navTo('rep')}
 $('againBtn').onclick=()=>openPrac(cur);
 $('nextBtn').onclick=()=>openPrac(queue.shift());
 /* theme: auto (match phone) / light / dark */
