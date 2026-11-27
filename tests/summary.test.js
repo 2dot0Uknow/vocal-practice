@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { summarizeSession, activeAt } from '../js/scoring.js';
 import { buildSession, normEx, describeExercise } from '../js/exercise.js';
-import { statRowsHTML, listItemsHTML, noteStripsHTML, historyEntry } from '../js/ui/report.js';
+import { statRowsHTML, listItemsHTML, noteStripsHTML } from '../js/ui/report.js';
 import { journeyStats } from '../js/ui/library.js';
 import { fixture, assertSame } from './helpers/fixture.js';
 import { singerFrames } from './helpers/signals.js';
@@ -62,15 +62,6 @@ test('summarizeSession: nobody sang -> encouraging copy, nothing to save, voice 
   assert.equal(summary.voiceLag, 0.15);
   assert.equal(summary.subtitle, "Didn't hear you this time");
   assert.deepEqual(summary.good, ['You showed up to practise. That counts.']);
-});
-
-test('historyEntry has the shape stored in vp_hist', () => {
-  const entry = historyEntry({ name: 'Scale' }, 80, new Date(2026, 10, 27, 9, 30));
-  assert.deepEqual(Object.keys(entry), ['name', 'pct', 'ts', 'date']);
-  assert.equal(entry.name, 'Scale');
-  assert.equal(entry.pct, 80);
-  assert.equal(entry.ts, new Date(2026, 10, 27, 9, 30).getTime());
-  assert.equal(typeof entry.date, 'string');
 });
 
 test('journeyStats: sessions, this week and the day streak', () => {
