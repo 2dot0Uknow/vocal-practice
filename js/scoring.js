@@ -13,6 +13,15 @@ export const err = (midi, targetMidi) => {
   return cents - 1200 * Math.round(cents / 1200);
 };
 
+/** How long after a note ends its scoring window still collects frames (late finishes count), in seconds. */
+export const scoringTail = (target) => Math.min(0.3, 0.6 * (target.t1 - target.t0));
+
+/**
+ * True when a note can be scored fairly at song time `songTime`: its whole scoring window
+ * (end + scoringTail, shifted later by the voice lag, since frames are shifted back by it) has been heard.
+ */
+export const noteFinishedBy = (target, songTime, voiceLag = 0) => target.t1 + voiceLag + scoringTail(target) <= songTime;
+
 /** The note being sung at time t, allowing 0.15 s of grace after it ends (so a late finish still counts). */
 export const activeAt = (targets, t) => targets.find((target) => t >= target.t0 && t < target.t1 + 0.15);
 
@@ -84,7 +93,7 @@ export function scoreNotes(targets, frames) {
   return targets.map((target, index) => {
     const duration = target.t1 - target.t0;
     const windowStart = target.t0 + Math.min(0.35 * duration, 0.06);
-    const windowEnd = target.t1 + Math.min(0.3, 0.6 * duration);
+    const windowEnd = target.t1 + scoringTail(target);
     const previousTarget = targets[index - 1];
     const nextTarget = targets[index + 1];
     const usable = frames.filter((frame) => {

@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createSessionMachine, completedRounds, decideEnd, reportTitle, classifyMicError, MIC_MESSAGES } from '../js/session.js';
-import { summarizeSession, scoreNotes, PARTIAL_CHEER } from '../js/scoring.js';
+import { summarizeSession, scoreNotes, scoringTail, noteFinishedBy, PARTIAL_CHEER } from '../js/scoring.js';
 import { buildSession, normEx } from '../js/exercise.js';
 import { singerFrames } from './helpers/signals.js';
 
@@ -10,6 +10,8 @@ import { singerFrames } from './helpers/signals.js';
 const exercise = normEx({ id: 'x', name: 'Test', pat: '1-3-5', vows: ['ah', 'ee'], start: 48, end: 50, bpm: 120, hold: 2 });
 const { targets } = buildSession(exercise, 0);
 const roundEnd = (round) => Math.max(...targets.filter((t) => t.round === round).map((t) => t.t1));
+// When the last note of a round can be scored fairly: its end plus the scoring tail (plus the voice lag).
+const settled = (round, lag = 0) => Math.max(...targets.filter((t) => t.round === round).map((t) => t.t1 + lag + scoringTail(t)));
 const perfectFrames = () => singerFrames(targets, { lag: 0, offsetCents: 0, wobbleCents: 0, seed: 1 });
 
 test('the session machine allows only idle > starting > running > stopping > idle (and a cancelled start)', () => {
@@ -30,9 +32,12 @@ test('the session machine allows only idle > starting > running > stopping > idl
 
 test('completedRounds counts only unbroken, fully ended rounds (every pass)', () => {
   assert.equal(completedRounds(targets, 0), 0);
-  assert.equal(completedRounds(targets, roundEnd(0) - 0.01), 0, 'last note of round 1 not over yet');
-  assert.equal(completedRounds(targets, roundEnd(0) + 0.01), 1);
-  assert.equal(completedRounds(targets, roundEnd(1) + 0.01), 2);
+  assert.equal(completedRounds(targets, settled(0) - 0.01), 0, 'last note of round 1 not scorable yet');
+  assert.equal(completedRounds(targets, roundEnd(0) + 0.01), 0, 'round 1 just ended: its last note still needs its scoring tail');
+  assert.equal(completedRounds(targets, settled(0)), 1);
+  assert.equal(completedRounds(targets, settled(1)), 2);
+  assert.equal(completedRounds(targets, settled(0, 0.2) - 0.01, 0.2), 0, 'the voice lag pushes the cut-off later');
+  assert.equal(completedRounds(targets, settled(0, 0.2), 0.2), 1);
   assert.equal(completedRounds(targets, 1e6), 3);
   assert.equal(completedRounds([], 100), 0);
   // The first sound pass of round 1 being over is not enough.
@@ -48,7 +53,7 @@ test('decideEnd: a finished run is reported and saved with every note', () => {
 
 for (const reason of ['stopped', 'hidden']) {
   test(`decideEnd (${reason}): under one round there is no report`, () => {
-    const decision = decideEnd({ reason, songTime: roundEnd(0) - 0.05, targets });
+    const decision = decideEnd({ reason, songTime: settled(0) - 0.05, targets });
     assert.equal(decision.showReport, false);
     assert.equal(decision.save, false);
     assert.equal(decision.lastRound, 0);
@@ -56,22 +61,22 @@ for (const reason of ['stopped', 'hidden']) {
   });
 
   test(`decideEnd (${reason}): after a round, report only the finished notes and never save`, () => {
-    const stopAt = roundEnd(1) + 0.4; // two rounds done, partway into round 3's cue/first note
+    const stopAt = settled(1) + 0.4; // two rounds done, partway into round 3's cue/first note
     const decision = decideEnd({ reason, songTime: stopAt, targets });
     assert.equal(decision.showReport, true);
     assert.equal(decision.save, false, 'stopped runs are never saved to history');
     assert.equal(decision.partial, true);
     assert.equal(decision.lastRound, 2);
     assert.ok(decision.scoredTargets.length > 0);
-    assert.ok(decision.scoredTargets.every((t) => t.t1 < stopAt));
-    const expected = targets.filter((t) => t.t1 < stopAt).length;
+    assert.ok(decision.scoredTargets.every((t) => noteFinishedBy(t, stopAt)));
+    const expected = targets.filter((t) => noteFinishedBy(t, stopAt)).length;
     assert.equal(decision.scoredTargets.length, expected);
   });
 }
 
 test('decideEnd: notes of the next round that already finished are scored too (t1 before the stop time)', () => {
   const nextRoundFirst = targets.find((t) => t.round === 1);
-  const stopAt = nextRoundFirst.t1 + 0.01;
+  const stopAt = Math.max(settled(0), nextRoundFirst.t1 + scoringTail(nextRoundFirst));
   const decision = decideEnd({ reason: 'stopped', songTime: stopAt, targets });
   assert.equal(decision.lastRound, 1);
   assert.ok(decision.scoredTargets.includes(nextRoundFirst));
@@ -84,7 +89,7 @@ test('reportTitle names the round a stopped run reached', () => {
 });
 
 test('summarizeSession on a partial run counts only the completed notes and is never saveable', () => {
-  const stopAt = roundEnd(0) + 0.01;
+  const stopAt = settled(0) + 0.01;
   const { scoredTargets } = decideEnd({ reason: 'stopped', songTime: stopAt, targets });
   const frames = perfectFrames().filter((f) => f.t < stopAt);
   const partial = summarizeSession({ targets: scoredTargets, frames, voiceLag: 0.15, previousRuns: [{ pct: 90 }], partial: true });
@@ -112,7 +117,7 @@ test('summarizeSession: the same notes score the same whether or not the run was
 });
 
 test('a partial run counts a silent completed note as missed, not a skipped one', () => {
-  const stopAt = roundEnd(0) + 0.01;
+  const stopAt = settled(0) + 0.01;
   const { scoredTargets } = decideEnd({ reason: 'hidden', songTime: stopAt, targets });
   const frames = perfectFrames().filter((f) => f.t < stopAt && !(f.t >= scoredTargets[0].t0 && f.t < scoredTargets[0].t1));
   const partial = summarizeSession({ targets: scoredTargets, frames, voiceLag: 0, previousRuns: [], partial: true });
@@ -137,4 +142,30 @@ test('mic messages: friendly wording for each reason, and the https message is k
   assert.match(MIC_MESSAGES.insecure, /https:\/\//);
   for (const text of Object.values(MIC_MESSAGES)) assert.match(text, /\.$/);
   assert.ok(MIC_MESSAGES.other.length > 10);
+});
+
+test('a note that ended only 0.1 s before Stop is left out (not counted as a miss)', () => {
+  const nextRoundFirst = targets.find((t) => t.round === 1);
+  const stopAt = nextRoundFirst.t1 + 0.1;
+  const decision = decideEnd({ reason: 'stopped', songTime: stopAt, targets });
+  assert.equal(decision.lastRound, 1);
+  assert.ok(!decision.scoredTargets.includes(nextRoundFirst), 'its scoring window is not over yet');
+  assert.ok(decision.scoredTargets.every((t) => t.round === 0));
+});
+
+test('a round whose last note has just ended is not complete yet, and the voice lag is taken into account', () => {
+  const justEnded = roundEnd(0) + 0.1;
+  assert.equal(decideEnd({ reason: 'stopped', songTime: justEnded, targets }).showReport, false);
+  const lag = 0.2;
+  assert.equal(decideEnd({ reason: 'stopped', songTime: settled(0), targets, voiceLag: lag }).showReport, false);
+  assert.equal(decideEnd({ reason: 'stopped', songTime: settled(0, lag), targets, voiceLag: lag }).showReport, true);
+});
+
+test('every note decideEnd keeps really has its whole scoring window heard (no note is penalised for stopping)', () => {
+  const lag = 0.15;
+  const stopAt = settled(0, lag) + 0.2;
+  const { scoredTargets } = decideEnd({ reason: 'stopped', songTime: stopAt, targets, voiceLag: lag });
+  const frames = perfectFrames().filter((f) => f.t <= stopAt);
+  const summary = summarizeSession({ targets: scoredTargets, frames, voiceLag: lag, previousRuns: [], partial: true });
+  assert.equal(summary.missCount, 0);
 });

@@ -1,6 +1,8 @@
 // The rules of a practice session, as pure functions (no DOM, no audio, no storage):
 // the session state machine, what happens when a session ends, and how a microphone failure is explained.
 
+import { noteFinishedBy } from './scoring.js';
+
 // idle -> starting (asking for the mic) -> running -> stopping -> idle. A start that is cancelled
 // before it got going goes straight from starting back to idle.
 const NEXT_STATES = {
@@ -25,14 +27,14 @@ export function createSessionMachine() {
 }
 
 /**
- * How many rounds, counting from round 1, have completely ended (every note of every sound pass)
- * by song time `songTime`. Rounds count only while unbroken: round 2 does not count if round 1 has not ended.
+ * How many rounds, counting from round 1, are completely finished (every note of every sound pass can be
+ * scored fairly, see noteFinishedBy) by song time `songTime`. Rounds count only while unbroken.
  */
-export function completedRounds(targets, songTime) {
-  const lastEnd = new Map();
-  targets.forEach((target) => lastEnd.set(target.round, Math.max(lastEnd.get(target.round) ?? -Infinity, target.t1)));
+export function completedRounds(targets, songTime, voiceLag = 0) {
+  const finished = new Map();
+  targets.forEach((target) => finished.set(target.round, (finished.get(target.round) ?? true) && noteFinishedBy(target, songTime, voiceLag)));
   let rounds = 0;
-  while (lastEnd.has(rounds) && lastEnd.get(rounds) < songTime) rounds++;
+  while (finished.get(rounds)) rounds++;
   return rounds;
 }
 
@@ -40,22 +42,23 @@ export function completedRounds(targets, songTime) {
  * Decide what ending a session means.
  *  - reason: 'finished' (ran to the end), 'stopped' (Stop button) or 'hidden' (phone locked / app switched)
  *  - songTime: the song clock when it ended; targets: every target of the session
+ *  - voiceLag: the current voice lag (seconds), because the scoring looks for the voice that much later
  * Returns {showReport, save (to history and the streak), partial, scoredTargets, lastRound}.
- * A stopped run is scored only on notes that had finished, and is never saved.
+ * A stopped run is scored only on notes whose scoring window had fully passed (so nothing is marked missed just because Stop came first), and is never saved.
  * Under one full round there is nothing fair to report, so no report is shown.
  */
-export function decideEnd({ reason, songTime, targets }) {
+export function decideEnd({ reason, songTime, targets, voiceLag = 0 }) {
   if (reason === 'finished') {
     const lastRound = targets.reduce((most, target) => Math.max(most, target.round + 1), 0);
     return { showReport: true, save: true, partial: false, scoredTargets: targets, lastRound };
   }
-  const lastRound = songTime == null ? 0 : completedRounds(targets, songTime);
+  const lastRound = songTime == null ? 0 : completedRounds(targets, songTime, voiceLag);
   if (lastRound < 1) return { showReport: false, save: false, partial: true, scoredTargets: [], lastRound: 0 };
   return {
     showReport: true,
     save: false,
     partial: true,
-    scoredTargets: targets.filter((target) => target.t1 < songTime),
+    scoredTargets: targets.filter((target) => noteFinishedBy(target, songTime, voiceLag)),
     lastRound,
   };
 }

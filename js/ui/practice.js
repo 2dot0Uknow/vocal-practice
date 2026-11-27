@@ -163,7 +163,7 @@ function endSession(reason) {
   const recorded = frames;
   abortSession();
   if (!wasRunning) return;                          // still waiting for the mic: nothing was sung
-  const decision = decideEnd({ reason, songTime: endedAt, targets });
+  const decision = decideEnd({ reason, songTime: endedAt, targets, voiceLag });
   if (!decision.showReport) {
     resetPracticeView();                            // under one round: back to a quiet, idle practice screen
     return;
