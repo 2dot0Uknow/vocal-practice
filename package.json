@@ -1,0 +1,9 @@
+{
+  "name": "vocal-practice",
+  "private": true,
+  "type": "module",
+  "description": "Vocal Practice: no dependencies and no build step. This file only marks the code as ES modules and defines the test command.",
+  "scripts": {
+    "test": "node --test"
+  }
+}
