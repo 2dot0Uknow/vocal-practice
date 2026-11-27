@@ -47,3 +47,6 @@ export const previousRunsOf = (history, exercise) => history.filter((entry) => e
 
 /** The history with a new run on the front, cut to the most recent MAX_HISTORY. */
 export const addToHistory = (history, entry) => [entry, ...history].slice(0, MAX_HISTORY);
+
+/** The name to show for an entry: the linked exercise's current name, else the name saved with the run. */
+export const entryLabel = (entry, exercises) => exercises.find((exercise) => entry.exId != null && exercise.id === entry.exId)?.name ?? entry.name;

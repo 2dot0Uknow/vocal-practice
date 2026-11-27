@@ -105,6 +105,12 @@ async function runHistoryChecks(baseUrl) {
     await page.waitForSelector('#list');
     expect((await page.evaluate(() => document.querySelector('#list b').textContent)) === 'Renamed rounds', 'rename did not stick');
     expect((await stored('vp_ex'))[0].id === 'xq', 'rename changed the id');
+    // Old runs now show the new name in the journey; the stored names are not rewritten; unlinked entries keep theirs.
+    const shown = await page.evaluate(() => document.getElementById('hist').innerText);
+    expect(shown.split('Quick rounds').length === 1 && shown.includes('Renamed rounds'), `journey should show the new name for old runs: ${shown}`);
+    expect((await stored('vp_hist')).filter((e) => e.name === 'Quick rounds').length === 3, 'stored names were rewritten');
+    await page.evaluate(() => document.getElementById('moreBtn')?.click());
+    expect((await page.evaluate(() => document.getElementById('hist').innerText)).includes('Deleted exercise'), 'unlinked entry should keep its saved name');
     const cheer2 = await runOnce();
     const afterSecond = await stored('vp_hist');
     expect(afterSecond[0].exId === 'xq' && afterSecond[0].name === 'Renamed rounds', 'second entry: name / exId');

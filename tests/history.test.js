@@ -1,7 +1,7 @@
 // History entries (A4), matching runs to an exercise by id (B9) and the 200-entry cap.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { historyEntry, previousRunsOf, addToHistory, MAX_HISTORY } from '../js/history.js';
+import { historyEntry, previousRunsOf, addToHistory, entryLabel, MAX_HISTORY } from '../js/history.js';
 import { summarizeSession } from '../js/scoring.js';
 import { buildSession, normEx } from '../js/exercise.js';
 import { singerFrames } from './helpers/signals.js';
@@ -110,4 +110,12 @@ test('old entries without the new fields still work everywhere that reads histor
   assert.equal(journeyStats(legacy, NOW.getTime()).sessions, 1);
   const summary = summarizeSession({ ...(() => { const { exercise } = runOf('scale', Object.keys(SINGER_SCENARIOS)[0]); const { targets } = buildSession(exercise, 0); return { targets, frames: singerFrames(targets, SINGER_SCENARIOS[Object.keys(SINGER_SCENARIOS)[0]]) }; })(), voiceLag: 0.15, previousRuns: legacy });
   assert.ok(summary.cheer.length > 0);
+});
+
+test('entryLabel: linked entries show the exercise\'s current name; deleted or unlinked ones keep the saved name', () => {
+  const exercises = [{ id: 'a', name: 'Warm-up scale' }];
+  assert.equal(entryLabel({ name: 'Five-note scale', exId: 'a' }, exercises), 'Warm-up scale');
+  assert.equal(entryLabel({ name: 'Gone', exId: 'deleted' }, exercises), 'Gone');
+  assert.equal(entryLabel({ name: 'Old entry' }, exercises), 'Old entry');
+  assert.equal(entryLabel({ name: 'Old entry', exId: undefined }, []), 'Old entry');
 });
