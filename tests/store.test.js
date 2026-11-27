@@ -29,6 +29,7 @@ test('storage keys are the ones already saved on people\'s phones', () => {
     pictureDelay: 'vp_lat',
     voiceLag: 'vp_vlag',
     theme: 'vp_theme',
+    schema: 'vp_schema', // P7: the data-shape version
   });
 });
 
@@ -67,4 +68,13 @@ test('store.remove forgets a key so reads fall back to the default again (B11: p
   store.remove(KEYS.pictureDelay);
   assert.equal(store.get(KEYS.pictureDelay, null), null);
   assert.equal(data.has('vp_lat'), false);
+});
+
+test('store.useInMemory stands in for a key until it is written (a failed migration keeps running on its in-memory copy)', () => {
+  data.set('vp_hist', '[{"name":"old"}]');
+  store.useInMemory({ vp_hist: [{ name: 'in memory' }] });
+  assert.deepEqual(store.get('vp_hist', []), [{ name: 'in memory' }]);
+  assert.equal(data.get('vp_hist'), '[{"name":"old"}]', 'storage itself is untouched');
+  store.set('vp_hist', [{ name: 'written' }]);
+  assert.deepEqual(store.get('vp_hist', []), [{ name: 'written' }]);
 });
