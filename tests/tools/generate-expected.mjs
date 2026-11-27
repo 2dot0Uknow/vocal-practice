@@ -14,6 +14,8 @@ const withoutId = ({ id, ...rest }) => rest;
 
 const fixture = {};
 
+fixture.samples = plain(api.getExs());
+
 // parseLine
 const lineResult = (line) => {
   const result = api.parseLine(line);

@@ -33,10 +33,7 @@ test('normEx fills defaults and keeps the old single "vow" field working', () =>
   assert.equal(normEx({ id: 'keep', pat: '1-2', start: 1, end: 2 }).id, 'keep');
 });
 
-test('the built-in sample exercises are unchanged', () => {
-  assert.deepEqual(SAMPLES.map((s) => [s.id, s.name, s.pat, s.vows, s.start, s.end, s.bpm, s.hold]), [
-    ['s1', '5-note scale', '1-2-3-4-5-4-3-2-1~', ['ah'], 48, 55, 90, 2],
-    ['s2', 'Arpeggio lip trill', '1-3-5-8-5-3-1~', ['lip trill'], 48, 53, 90, 2],
-    ['s3', 'Sustain on "ng"', '1-5~-1~', ['ng'], 48, 52, 60, 4],
-  ]);
+test('the built-in sample exercises are unchanged from the original', () => {
+  assertSame(SAMPLES, fixture.samples);
+  assert.deepEqual(SAMPLES.map((s) => s.id), ['s1', 's2', 's3']);
 });

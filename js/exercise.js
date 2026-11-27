@@ -1,6 +1,6 @@
 // The exercise model and the timeline built from it.
 
-import { parsePat, rootsOf } from './music.js';
+import { parsePat, rootsOf, noteName } from './music.js';
 
 /** Fill in defaults so every exercise (saved, sample or converted) has the same shape. */
 export const normEx = (exercise) => ({
@@ -22,7 +22,7 @@ export const normEx = (exercise) => ({
 export const SAMPLES = [
   { id: 's1', name: '5-note scale', pat: '1-2-3-4-5-4-3-2-1~', vows: ['ah'], start: 48, end: 55 },
   { id: 's2', name: 'Arpeggio lip trill', pat: '1-3-5-8-5-3-1~', vows: ['lip trill'], start: 48, end: 53 },
-  { id: 's3', name: 'Sustain on "ng"', pat: '1-5~-1~', vows: ['ng'], start: 48, end: 52, bpm: 60, hold: 4 },
+  { id: 's3', name: 'Sustain on "ng"', pat: '1~-5~-1~', vows: ['ng'], start: 48, end: 52, bpm: 60, hold: 4 },
 ].map(normEx);
 
 // Sounds like these (lip trills, rolls, raspberries) buzz, so they are analysed in "trill mode".
@@ -65,3 +65,6 @@ export function buildSession(exercise, startTime) {
   });
   return { targets, plays, end: t + 0.3 };
 }
+
+/** The one-line description under an exercise's name, e.g. "1 3 5 · ah · C3–G3 · 90 bpm". */
+export const describeExercise = (exercise) => `${exercise.pat.replace(/-/g, ' ')}${exercise.vows.length ? ' · ' + exercise.vows.join(' / ') : ''}${exercise.rootVow ? ' (root: ' + exercise.rootVow + ')' : ''} · ${noteName(exercise.start)}–${noteName(exercise.end)}${exercise.top ? ' range' : ''} · ${exercise.bpm} bpm`;

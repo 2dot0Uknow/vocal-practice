@@ -51,7 +51,7 @@ export function loadOriginal(repoRoot) {
     ${scoring}
     return {
       nm, toMidi, hz, fToM, esc, parsePat, rootsOf, parseLine, parseAll, normEx, detect, err, strictAt, estimateLag,
-      scoreNotes, build, isTrill, med, mean, sd, report, desc: null,
+      scoreNotes, build, isTrill, med, mean, sd, report, desc: null, getExs: () => exs,
       setSeq(s){ seq = s; }, setFrames(f){ frames = f; }, setQueue(q){ queue = q; },
       setVL(v){ VL = v; }, getVL(){ return VL; }, setDefR(r){ defR = r; }, getDefR(){ return defR; },
     };`;

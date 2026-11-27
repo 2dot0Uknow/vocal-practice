@@ -13,6 +13,9 @@ export const err = (midi, targetMidi) => {
   return cents - 1200 * Math.round(cents / 1200);
 };
 
+/** The note being sung at time t, allowing 0.15 s of grace after it ends (so a late finish still counts). */
+export const activeAt = (targets, t) => targets.find((target) => t >= target.t0 && t < target.t1 + 0.15);
+
 /** The target sounding at time t exactly (no grace period), or null. Targets are in time order. */
 export function strictAt(targets, t) {
   let low = 0;
