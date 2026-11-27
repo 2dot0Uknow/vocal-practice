@@ -27,15 +27,21 @@ export function createSessionMachine() {
 }
 
 /**
- * How many rounds, counting from round 1, are completely finished (every note of every sound pass can be
- * scored fairly, see noteFinishedBy) by song time `songTime`. Rounds count only while unbroken.
+ * Which round a stopped run got to: the number (counting from 1) of the last round whose last attempt is completely
+ * finished (every note of every sound pass can be scored fairly, see noteFinishedBy) by song time `songTime`.
+ * Rounds count only while unbroken. `targets` holds only the live attempts (B12), so a round left out by Skip has
+ * no targets and is passed over, not counted as unfinished; a round that has not been placed yet is not in the list either.
+ * Returns 0 when no round is finished.
  */
 export function completedRounds(targets, songTime, voiceLag = 0) {
   const finished = new Map();
   targets.forEach((target) => finished.set(target.round, (finished.get(target.round) ?? true) && noteFinishedBy(target, songTime, voiceLag)));
-  let rounds = 0;
-  while (finished.get(rounds)) rounds++;
-  return rounds;
+  let lastFinished = -1;
+  for (const round of [...finished.keys()].sort((a, b) => a - b)) {
+    if (!finished.get(round)) break;
+    lastFinished = round;
+  }
+  return lastFinished + 1;
 }
 
 /**
@@ -48,10 +54,11 @@ export function completedRounds(targets, songTime, voiceLag = 0) {
  * Under one full round there is nothing fair to report, so no report is shown.
  */
 export function decideEnd({ reason, songTime, targets, voiceLag = 0 }) {
-  if (reason === 'finished') {
+  if (reason === 'finished' && targets.length) {
     const lastRound = targets.reduce((most, target) => Math.max(most, target.round + 1), 0);
     return { showReport: true, save: true, partial: false, scoredTargets: targets, lastRound };
   }
+  // (A 'finished' run with no notes at all, e.g. every round skipped, is treated like a stop under one round.)
   const lastRound = songTime == null ? 0 : completedRounds(targets, songTime, voiceLag);
   if (lastRound < 1) return { showReport: false, save: false, partial: true, scoredTargets: [], lastRound: 0 };
   return {

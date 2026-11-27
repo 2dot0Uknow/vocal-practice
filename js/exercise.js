@@ -35,11 +35,63 @@ export const isTrill = (sound) => TRILL_SOUND.test(sound || '');
 const CUE_GAP = 1;
 
 /**
- * Lay an exercise out on a timeline starting at startTime (seconds).
- * Returns:
+ * B12: the plan of an exercise, round by round, with every time RELATIVE to the start of its round.
+ * Nothing here knows about the clock, so a round can be placed on the song clock whenever it is reached
+ * (and placed again for "Again", or never for "Skip"). Returns {rounds: [...]} where a round is
+ *  - index, root (midi), length (seconds from the round's start to the next round's start)
+ *  - cue:   {m: [midi...], off: 0, d}                     the chord before the round
+ *  - notes: [{m, off, end, d, pass, syl, trill}]          what is sung; off / end are seconds from the round's start
+ * A note's `end` is exactly the next note's `off` (no rounding drift between neighbours).
+ */
+export function planRounds(exercise) {
+  const secondsPerBeat = 60 / exercise.bpm;
+  const pattern = parsePat(exercise.pat);
+  const roots = rootsOf(exercise, pattern);
+  const passes = exercise.vows.length ? exercise.vows : [''];
+  const rounds = roots.map((root, index) => {
+    // Cue chord: root, major third, fifth.
+    const cue = { m: [root, root + 4, root + 7], off: 0, d: secondsPerBeat * 1.5 };
+    let offset = secondsPerBeat * 2 + CUE_GAP;
+    const notes = [];
+    passes.forEach((vowel, pass) => {
+      if (pass) offset += secondsPerBeat;
+      pattern.forEach((note) => {
+        const duration = secondsPerBeat * (note.h ? exercise.hold : 1);
+        const sound = exercise.rootVow && note.deg == 1 ? exercise.rootVow : vowel;
+        const end = offset + duration;
+        notes.push({ m: root + note.s, off: offset, end, d: duration, pass, syl: sound, trill: isTrill(sound) });
+        offset = end;
+      });
+    });
+    return { index, root, length: offset + secondsPerBeat, cue, notes };
+  });
+  return { rounds };
+}
+
+/**
+ * Put one planned round on the song clock, starting at `start` seconds.
+ * Returns {index, start, end (when the next round would start), targets, plays}:
  *  - targets: the notes to sing, {m (midi), t0, t1, round, pass, syl (sound), trill}
- *  - plays:   everything the piano plays, {m: [midi...], t, d}: a cue chord before each round, then the notes
- *  - end:     when the whole session is over
+ *  - plays:   what the piano plays, {m: [midi...], t, d}: the cue chord, then the notes
+ */
+export function placeRound(round, start) {
+  const targets = [];
+  const plays = [{ m: round.cue.m, t: start + round.cue.off, d: round.cue.d }];
+  round.notes.forEach((note) => {
+    const t0 = start + note.off;
+    plays.push({ m: [note.m], t: t0, d: note.d });
+    targets.push({ m: note.m, t0, t1: start + note.end, round: round.index, pass: note.pass, syl: note.syl, trill: note.trill });
+  });
+  return { index: round.index, start, end: start + round.length, targets, plays };
+}
+
+/**
+ * REFERENCE ONLY (the app no longer uses it): the whole exercise laid out on one fixed timeline starting at
+ * startTime, exactly as the app did before B12. The characterization fixture pins its output, and
+ * tests/rounds.test.js checks that placing the rounds one by one (planRounds + placeRound, driven by run.js)
+ * gives the same times for an uninterrupted run. It adds times one after another, so its numbers can differ
+ * from the per-round ones by about 1e-13 seconds.
+ * Returns {targets, plays, end}; `end` is when the whole session is over.
  */
 export function buildSession(exercise, startTime) {
   const secondsPerBeat = 60 / exercise.bpm;

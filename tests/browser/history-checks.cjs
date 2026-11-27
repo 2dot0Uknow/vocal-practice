@@ -53,7 +53,9 @@ async function runHistoryChecks(baseUrl) {
   expect(await reference.page.evaluate(() => localStorage.getItem('vp_schema')) === '99', 'schema 99: vp_schema should stay 99');
   await reference.browser.close();
 
-  const { browser, page, errors: pageErrors } = await openApp(baseUrl, { initScript: seed() });
+  // B12: a steady fake-mic tone, because the default beeping mic gives a note only ~3 frames at 50 analyses a second,
+  // so whether a run "heard" anything (and was saved) depended on luck.
+  const { browser, page, errors: pageErrors } = await openApp(baseUrl, { initScript: seed(), steadyTone: true });
   errors.push(...pageErrors);
   const stored = (key) => page.evaluate((k) => JSON.parse(localStorage.getItem(k)), key);
   const text = (id) => page.evaluate((i) => document.getElementById(i).innerText, id);

@@ -8,6 +8,8 @@ const { serve } = require('./serve.cjs');
 const { runSessionChecks } = require('./session-checks.cjs');
 const { runConverterChecks } = require('./converter-checks.cjs');
 const { runHistoryChecks } = require('./history-checks.cjs');
+const { runFlowChecks } = require('./flow-checks.cjs');
+const { runPerfChecks } = require('./perf-checks.cjs');
 
 (async () => {
   const args = process.argv.slice(2);
@@ -36,6 +38,17 @@ const { runHistoryChecks } = require('./history-checks.cjs');
   if (!args.includes('--no-history')) {
     const history = await runHistoryChecks(baseUrl);
     errors.push(...history.errors);
+  }
+  // PR 5: Pause / Again / Skip and the look-ahead scheduler (skip with --no-flow).
+  if (!args.includes('--no-flow')) {
+    const flow = await runFlowChecks(baseUrl);
+    errors.push(...flow.errors);
+  }
+  // PR 5: the two-minute 24-round performance run (only with --perf; also runnable alone: node tests/browser/perf-checks.cjs).
+  if (args.includes('--perf')) {
+    const perf = await runPerfChecks(baseUrl);
+    errors.push(...perf.errors);
+    console.log(JSON.stringify(perf.numbers, null, 2));
   }
   if (server) server.stop();
   console.log(JSON.stringify({ visited: observations.visitedScreens, errors }, null, 2));

@@ -2,7 +2,9 @@
 // the session report's numbers and wording. Pure functions only: no DOM, no storage.
 //
 // A "frame" is one analysis of the microphone: {t (seconds), m (midi pitch or null), c (clarity),
-// ring (brightness), tr (trill mode)}. A "target" comes from buildSession().
+// ring (brightness), tr (trill mode)}. A "target" comes from placeRound() (exercise.js, via run.js).
+
+import { firstIndexWhere, frameRange, isSortedByTime } from './timeindex.js';
 
 /**
  * Signed distance in cents from target pitch `targetMidi` to `midi`, folded to the nearest octave
@@ -22,8 +24,15 @@ export const scoringTail = (target) => Math.min(0.3, 0.6 * (target.t1 - target.t
  */
 export const noteFinishedBy = (target, songTime, voiceLag = 0) => target.t1 + voiceLag + scoringTail(target) <= songTime;
 
-/** The note being sung at time t, allowing 0.15 s of grace after it ends (so a late finish still counts). */
-export const activeAt = (targets, t) => targets.find((target) => t >= target.t0 && t < target.t1 + 0.15);
+/**
+ * The note being sung at time t, allowing 0.15 s of grace after it ends (so a late finish still counts).
+ * Targets are in time order and do not overlap, so this is a binary search (B12): the first target still
+ * inside its grace period at t, if it has started. Same answer as scanning the whole list.
+ */
+export function activeAt(targets, t) {
+  const candidate = targets[firstIndexWhere(targets, (target) => t < target.t1 + 0.15)];
+  return candidate && t >= candidate.t0 ? candidate : undefined;
+}
 
 /** The target sounding at time t exactly (no grace period), or null. Targets are in time order. */
 export function strictAt(targets, t) {
@@ -90,13 +99,22 @@ export const stdDev = (values) => {
  * {...target, med (median cents off), sd (steadiness), clar (clarity), ring}.
  */
 export function scoreNotes(targets, frames) {
+  // B12: with the frames in time order only the frames inside a note's window are looked at (two binary
+  // searches); the checks and their order are unchanged, so the numbers are identical. Unsorted input
+  // (not produced by the app) takes the original walk over every frame.
+  const sorted = isSortedByTime(frames);
   return targets.map((target, index) => {
     const duration = target.t1 - target.t0;
     const windowStart = target.t0 + Math.min(0.35 * duration, 0.06);
     const windowEnd = target.t1 + scoringTail(target);
     const previousTarget = targets[index - 1];
     const nextTarget = targets[index + 1];
-    const usable = frames.filter((frame) => {
+    let candidates = frames;
+    if (sorted) {
+      const { start, end } = frameRange(frames, windowStart, windowEnd);
+      candidates = frames.slice(start, end);
+    }
+    const usable = candidates.filter((frame) => {
       if (frame.m == null || frame.t < windowStart || frame.t > windowEnd) return false;
       const centsOff = Math.abs(err(frame.m, target.m));
       if (centsOff > 450) return false;
