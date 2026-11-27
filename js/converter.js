@@ -123,17 +123,22 @@ export function guessNote(guess) {
 // Words that dangle at the end of a name cut short by a note name ("Sirens up to").
 const DANGLING_END = /\s+(?:up to|down to|ending on|end on|starting on|start on|until|through|thru|to|from|on|at)$/i;
 // "... up to A" where the note's octave digit cut the name short: drop the lone note letter as well.
-const CUT_NOTE_AFTER_TO = /\s+(?:up to|down to|ending on|end on|until|through|thru|to|on|at)\s+[A-G][#b]?$/;
+const CUT_NOTE_AFTER_TO = /(?:^|\s+)(?:up to|down to|ending on|end on|until|through|thru|to|on|at|from|starting on|start on|starting at|beginning on|begin on)\s+([A-G][#b]?)$/i;
+// What is left when a name was only "From" / "Start on" + a note.
+const ONLY_A_CONNECTOR = /^(?:from|starting on|start on|beginning on|begin on)$/i;
 
 /** The name made of the line's leading words ("Lip roll arpeggios"), or '' when the line leads with a note name or digits. */
 function leadingName(raw) {
   let name = (raw.match(/^[A-Za-z][^,.:\d(]{1,38}/) || [''])[0].trim();
   // Only a note name ("Bb" of "Bb2 to F4 ...") is no name at all.
   if (/^[A-Ga-g][#b]?(\s+(to|-)\s+[A-Ga-g][#b]?)?$/.test(name)) return '';
-  name = name.replace(CUT_NOTE_AFTER_TO, '');
+  // (The note letter must be a capital: "Sing on a" keeps its "a".)
+  const cut = name.match(CUT_NOTE_AFTER_TO);
+  if (cut && cut[1][0] == cut[1][0].toUpperCase()) name = name.slice(0, cut.index);
   // A trailing connector is stripped repeatedly ("Sirens up to" -> "Sirens").
   while (DANGLING_END.test(name)) name = name.replace(DANGLING_END, '');
-  return name.trim();
+  name = name.trim();
+  return ONLY_A_CONNECTOR.test(name) ? '' : name;
 }
 
 /** "1-2-3-4-5-4… on gee/gah": a name made from the pattern and the sounds. */

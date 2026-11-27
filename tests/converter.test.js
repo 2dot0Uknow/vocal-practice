@@ -31,6 +31,9 @@ const CHANGED_ON_PURPOSE = {
   // B6: the trailing "up to A" is cut from the name.
   'Sirens up to A4': { name: 'Sirens' },
 };
+// B6: no note fragments in names ("from E" cut off "from E3"; "From C" is no name, so one is built from pattern + sound).
+CHANGED_ON_PURPOSE['Major scale from E3 up to E4 at 120 bpm'] = { name: 'Major scale' };
+CHANGED_ON_PURPOSE['from C3 1 2 3 on nay'] = { name: '1-2-3~ on nay' };
 const expectedFor = (line, expected) => ({ ...expected, ...CHANGED_ON_PURPOSE[line] });
 
 test('parseLine matches the original on the four textarea placeholder lines and 20 other lines', () => {
@@ -123,7 +126,12 @@ test('B6: a trailing "up to" / "from" / "on" is cut from the name', () => {
   assert.equal(run('Sirens to A4').name, 'Sirens');
   assert.equal(run('Hum on C3').name, 'Hum');
   assert.equal(run('Hum on C3 1 2 3').name, 'Hum');
-  assert.equal(run('Major scale from E3 up to E4 at 120 bpm').name, 'Major scale from E', 'pinned: left as the original app named it');
+  assert.equal(run('Major scale from E3 up to E4 at 120 bpm').name, 'Major scale');
+  assert.equal(run('Sirens from A3 to A4').name, 'Sirens');
+  assert.equal(run('Sirens starting on A3').name, 'Sirens');
+  assert.equal(run('From C3 1 2 3').name, '1-2-3~');
+  assert.equal(run('Start on C3 1 2 3 on nay').name, '1-2-3~ on nay');
+  assert.equal(run('Sing on a, 1 2 3').name, 'Sing on a', 'a lower-case "a" is a word, not a note');
 });
 
 // B5: the converter says when it guessed.
