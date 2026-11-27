@@ -16,6 +16,9 @@ export function initNavigation(callbacks) {
   document.querySelectorAll('[data-go]').forEach((button) => (button.onclick = goHome));
 }
 
+/** The id of the screen being shown ('lib', 'add', 'prac' or 'rep'). */
+export const currentScreen = () => screen;
+
 function showScreen(id) {
   if (screen == 'add' && id != 'add') hooks.stopPreview();
   screen = id;
