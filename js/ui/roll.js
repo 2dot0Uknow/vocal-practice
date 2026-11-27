@@ -5,9 +5,10 @@ import { noteName } from '../music.js';
 import { err, activeAt } from '../scoring.js';
 
 /**
- * view = {sequence, frames, now, running, voiceLag}:
+ * view = {sequence, frames, now, running, voiceLag, spelling}:
  *  - sequence: the built session ({targets})
  *  - now: current position on the song clock (seconds)
+ *  - spelling: how to spell note names ('b', '#' or 'auto'; see noteName)
  *  - voiceLag: seconds to shift the voice frames back by
  */
 export function createRoll(canvas) {
@@ -61,7 +62,7 @@ export function createRoll(canvas) {
     }
   }
 
-  function draw({ sequence, frames, now, running, voiceLag }) {
+  function draw({ sequence, frames, now, running, voiceLag, spelling }) {
     if (!sequence || !sequence.targets.length) return;
     const density = devicePixelRatio || 1;
     const width = canvas.width / density;
@@ -84,7 +85,7 @@ export function createRoll(canvas) {
       context.fillRect(0, yOf(midi), width, midi % 12 == 0 ? 1.5 : 0.5);
       if (midi % 12 == 0 || midi % 12 == 7) {
         context.fillStyle = colours.muted;
-        context.fillText(noteName(midi), 6, yOf(midi) - 7);
+        context.fillText(noteName(midi, spelling), 6, yOf(midi) - 7);
       }
     }
 

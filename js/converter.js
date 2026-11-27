@@ -2,7 +2,7 @@
 // Heuristic and forgiving: it looks for a range, tempo, a pattern and sounds in free text.
 // Pure functions only. The default range used when a line gives none is passed in.
 
-import { toMidi, parsePat } from './music.js';
+import { toMidi, parsePat, typedSpelling } from './music.js';
 import { normEx } from './exercise.js';
 
 // Words that are not sounds when they follow "with" / "on".
@@ -22,6 +22,25 @@ const normText = (text) => text
   .replace(/♭/g, 'b')
   .replace(/♯/g, '#')
   .replace(/\b([A-Ga-g])\s*-?\s*(flat|sharp)\s*(\d)\b/gi, (whole, letter, accidental, octave) => letter.toUpperCase() + (accidental.toLowerCase() == 'flat' ? 'b' : '#') + octave);
+
+// Phrases that only say how many times to repeat ("x2", "2x", "x 2", "times 2", "twice"). The app has no
+// repeat count, so they are ignored (B6: "x2" used to leak into the pattern as a note).
+const REPEAT_WORDS = /\b(?:x\s*\d+|\d+x|times\s+\d+|twice|thrice)\b/g;
+
+// How long to hold: "hold 5 for 4 beats", "hold for 4 beats", "4 beat hold".
+const HOLD_DEGREE_FOR = /\b(?:hold|held|sustain)(?:ing)?\s+(?:the\s+)?(\d{1,2})\s+for\s+(\d)\s*(?:beats?|counts?)\b/i;
+const HOLD_FOR = /\b(?:hold|held|sustain)(?:ing)?\s+(?:it\s+|them\s+|that\s+|the\s+last(?:\s+note)?\s+)?for\s+(\d)\s*(?:beats?|counts?)\b/i;
+const BEAT_HOLD = /\b(\d)[- ]?(?:beats?|counts?)[- ]+(?:hold|held|sustain)\b/i;
+
+/** Pull a hold phrase out of the text: returns {text without it, beats (1-4), degree (or null)} or null. */
+function takeHold(text) {
+  let match;
+  let found = null;
+  if ((match = text.match(HOLD_DEGREE_FOR))) found = { beats: +match[2], degree: +match[1] };
+  else if ((match = text.match(HOLD_FOR)) || (match = text.match(BEAT_HOLD))) found = { beats: +match[1], degree: null };
+  if (!found) return null;
+  return { text: text.replace(match[0], ' '), beats: Math.min(4, Math.max(1, found.beats)), degree: found.degree };
+}
 
 /** Clean a sound word: lower case, "eeee" -> "ee", "trills" -> "trill". */
 const fixVowel = (word) => word
@@ -95,6 +114,39 @@ function degreesFrom(body) {
   return degrees;
 }
 
+/** The gentle note shown on a review card when the pattern was a guess. */
+export function guessNote(guess) {
+  if (guess.kind == 'keyword') return `I used ${guess.what} for this. Change the pattern below if your coach meant something else.`;
+  return "I couldn't find a pattern in this line, so I started you with a 5-note scale. Change it below.";
+}
+
+// Words that dangle at the end of a name cut short by a note name ("Sirens up to").
+const DANGLING_END = /\s+(?:up to|down to|ending on|end on|starting on|start on|until|through|thru|to|from|on|at)$/i;
+// "... up to A" where the note's octave digit cut the name short: drop the lone note letter as well.
+const CUT_NOTE_AFTER_TO = /(?:^|\s+)(?:up to|down to|ending on|end on|until|through|thru|to|on|at|from|starting on|start on|starting at|beginning on|begin on)\s+([A-G][#b]?)$/i;
+// What is left when a name was only "From" / "Start on" + a note.
+const ONLY_A_CONNECTOR = /^(?:from|starting on|start on|beginning on|begin on)$/i;
+
+/** The name made of the line's leading words ("Lip roll arpeggios"), or '' when the line leads with a note name or digits. */
+function leadingName(raw) {
+  let name = (raw.match(/^[A-Za-z][^,.:\d(]{1,38}/) || [''])[0].trim();
+  // Only a note name ("Bb" of "Bb2 to F4 ...") is no name at all.
+  if (/^[A-Ga-g][#b]?(\s+(to|-)\s+[A-Ga-g][#b]?)?$/.test(name)) return '';
+  // (The note letter must be a capital: "Sing on a" keeps its "a".)
+  const cut = name.match(CUT_NOTE_AFTER_TO);
+  if (cut && cut[1][0] == cut[1][0].toUpperCase()) name = name.slice(0, cut.index);
+  // A trailing connector is stripped repeatedly ("Sirens up to" -> "Sirens").
+  while (DANGLING_END.test(name)) name = name.replace(DANGLING_END, '');
+  name = name.trim();
+  return ONLY_A_CONNECTOR.test(name) ? '' : name;
+}
+
+/** "1-2-3-4-5-4… on gee/gah": a name made from the pattern and the sounds. */
+function builtName(pattern, vows) {
+  const parts = pattern.split('-');
+  return (parts.length > 6 ? parts.slice(0, 6).join('-') + '…' : pattern) + (vows.length ? ' on ' + vows.join('/') : '');
+}
+
 /**
  * Convert one line of text into an exercise (or null for an empty line).
  * defaultRange = {start, end} (MIDI) is used when the line names no starting note.
@@ -133,9 +185,11 @@ export function parseLine(line, defaultRange) {
 
   // --- pattern ---
   // Remove everything that is not part of the pattern (note names, tempo, "4 beats", "5-note").
-  let body = text
+  const holdPhrase = takeHold(text);
+  let body = (holdPhrase ? holdPhrase.text : text)
     .replace(NOTE_NAME_IN_TEXT, ' ')
     .toLowerCase()
+    .replace(REPEAT_WORDS, ' ')
     .replace(/\d{2,3}\s*(bpm|beats per minute)/g, ' ')
     .replace(/tempo\s*\S+/g, ' ')
     .replace(/\b\d+\s*(beats?|counts?|times|x)\b/g, ' ')
@@ -145,20 +199,36 @@ export function parseLine(line, defaultRange) {
   const degrees = degreesFrom(body);
   let pattern = '';
   let solfege;
+  let guess = null; // null, or {kind: 'fallback' | 'keyword', what} when the pattern was not read from the line
   if (degrees.length >= 2) {
+    if (holdPhrase && holdPhrase.degree != null) {
+      // "hold 5 for 4 beats": hold the last note with that degree (it is already in the pattern), else the last note.
+      const held = degrees.map((entry) => entry.d).lastIndexOf(holdPhrase.degree);
+      degrees[held >= 0 ? held : degrees.length - 1].h = true;
+    } else if (holdPhrase) {
+      degrees[degrees.length - 1].h = true;
+    }
     pattern = degrees.map((entry) => (entry.acc || '') + entry.d + (entry.h ? '~' : '')).join('-');
   } else if ((solfege = lower.match(/\b(?:do|re|mi|fa|sol|so|la|ti)\b(?:[\s,\-]+(?:do|re|mi|fa|sol|so|la|ti)\b){2,}/))) {
     const degreeOfSyllable = { do: 1, re: 2, mi: 3, fa: 4, sol: 5, so: 5, la: 6, ti: 7 };
     pattern = solfege[0].split(/[\s,\-]+/).map((word) => degreeOfSyllable[word]).join('-');
-  } else if (/arpeggio/.test(lower)) pattern = '1-3-5-8-5-3-1~';
-  else if (/interval/.test(lower)) pattern = '1-2-1-3-1-4-1-5-1-6-1-7-1-8~';
-  else if (/(9|nine)[- ]note/.test(lower)) pattern = '1-2-3-4-5-6-7-8-9-8-7-6-5-4-3-2-1~';
-  else if (/(octave|major) scale|(8|eight)[- ]note/.test(lower)) pattern = '1-2-3-4-5-6-7-8-7-6-5-4-3-2-1~';
-  else if (/octave/.test(lower)) pattern = '1-8~-1~';
-  else if (/triad/.test(lower)) pattern = '1-3-5-3-1~';
-  else pattern = FALLBACK_PATTERN;
+  } else {
+    const keyword = [
+      [/arpeggio/, '1-3-5-8-5-3-1~', 'a standard arpeggio'],
+      [/interval/, '1-2-1-3-1-4-1-5-1-6-1-7-1-8~', 'a standard intervals pattern'],
+      [/(9|nine)[- ]note/, '1-2-3-4-5-6-7-8-9-8-7-6-5-4-3-2-1~', 'a standard 9-note scale'],
+      [/(octave|major) scale|(8|eight)[- ]note/, '1-2-3-4-5-6-7-8-7-6-5-4-3-2-1~', 'a standard 8-note scale'],
+      [/octave/, '1-8~-1~', 'a standard octave jump'],
+      [/triad/, '1-3-5-3-1~', 'a standard triad'],
+    ].find(([word]) => word.test(lower));
+    pattern = keyword ? keyword[1] : FALLBACK_PATTERN;
+    guess = keyword ? { kind: 'keyword', what: keyword[2] } : { kind: 'fallback' };
+  }
   if (!/~/.test(pattern)) pattern += '~';
-  if (!parsePat(pattern)) pattern = FALLBACK_PATTERN;
+  if (!parsePat(pattern)) {
+    pattern = FALLBACK_PATTERN;
+    guess = { kind: 'fallback' };
+  }
 
   // --- sounds ---
   let rootVow = '';
@@ -175,13 +245,10 @@ export function parseLine(line, defaultRange) {
   if (!vows.length && (match = text.match(/["“‘']([A-Za-z ]{1,12})["”’']/))) vows = [fixVowel(match[1])];
 
   // --- name: the leading words of the line, else built from the pattern and sound ---
-  let name = (raw.match(/^[A-Za-z][^,.:\d(]{1,38}/) || [''])[0].trim();
-  if (!name) {
-    const parts = pattern.split('-');
-    name = (parts.length > 6 ? parts.slice(0, 6).join('-') + '…' : pattern) + (vows.length ? ' on ' + vows.join('/') : '');
-  }
+  const name = leadingName(raw) || builtName(pattern, vows);
 
-  return normEx({
+  const spell = typedSpelling(text);
+  const exercise = normEx({
     name,
     pat: pattern,
     vows,
@@ -191,9 +258,19 @@ export function parseLine(line, defaultRange) {
     top,
     step,
     bpm,
-    hold: 2,
+    hold: holdPhrase ? holdPhrase.beats : 2,
     both: /up and (back )?down|ascend(ing)? and descend/.test(lower),
+    spell,
   });
+  // The review card also needs to know what was guessed and what the coach wrote. These ride along on the
+  // returned object only: the editor builds the saved exercise afresh from its fields, so they are never stored.
+  return {
+    ...exercise,
+    guessed: !!guess,
+    guessKind: guess ? guess.kind : null,
+    guessNote: guess ? guessNote(guess) : '',
+    original: raw,
+  };
 }
 
 /** One exercise per line; blank lines are skipped. */

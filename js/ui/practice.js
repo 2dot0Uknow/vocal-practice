@@ -4,7 +4,7 @@
 import { $, fillRange } from './dom.js';
 import { state } from '../state.js';
 import { store, KEYS } from '../store.js';
-import { noteName, hzToMidi } from '../music.js';
+import { noteName, hzToMidi, spellingOf } from '../music.js';
 import { buildSession, describeExercise } from '../exercise.js';
 import { detect } from '../pitch.js';
 import { err, strictAt, estimateLag, activeAt, median, summarizeSession } from '../scoring.js';
@@ -48,7 +48,7 @@ function showPictureDelay() {
 }
 
 function drawRoll(now = isRunning() ? songTime() : 0) {
-  roll.draw({ sequence, frames, now, running: isRunning(), voiceLag });
+  roll.draw({ sequence, frames, now, running: isRunning(), voiceLag, spelling: spellingOf(currentExercise) });
 }
 
 /** Re-read the theme colours and redraw (called after the theme changes). */
@@ -219,10 +219,10 @@ function loop() {
 
   // The note the voice is judged against: the one sounding when it was sung (after lag), else the current one.
   const judgedTarget = frame.m != null ? (strictAt(sequence.targets, frame.t - voiceLag) || target) : target;
-  $('rTarget').textContent = target ? noteName(target.m) : '–';
+  $('rTarget').textContent = target ? noteName(target.m, spellingOf(currentExercise)) : '–';
   $('rSyl').textContent = target && target.syl ? target.syl : '–';
   if (frame.m != null) {
-    $('rNote').textContent = noteName(frame.m);
+    $('rNote').textContent = noteName(frame.m, spellingOf(currentExercise));
     if (judgedTarget) {
       const cents = err(frame.m, judgedTarget.m);
       $('rCents').textContent = (cents > 0 ? '+' : '') + Math.round(cents) + ' cents';

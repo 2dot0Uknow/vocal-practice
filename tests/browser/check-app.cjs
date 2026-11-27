@@ -6,6 +6,7 @@ const path = require('node:path');
 const { runScenario } = require('./scenario.cjs');
 const { serve } = require('./serve.cjs');
 const { runSessionChecks } = require('./session-checks.cjs');
+const { runConverterChecks } = require('./converter-checks.cjs');
 
 (async () => {
   const args = process.argv.slice(2);
@@ -13,7 +14,7 @@ const { runSessionChecks } = require('./session-checks.cjs');
   const shotsDir = shotsIndex >= 0 ? args.splice(shotsIndex, 2)[1] : null;
   if (shotsDir) fs.mkdirSync(shotsDir, { recursive: true });
   let server = null;
-  let baseUrl = args[0];
+  let baseUrl = args.find((arg) => !arg.startsWith('--'));
   if (!baseUrl) {
     server = await serve(path.resolve(__dirname, '../..'));
     baseUrl = server.url;
@@ -24,6 +25,11 @@ const { runSessionChecks } = require('./session-checks.cjs');
   if (!args.includes('--no-session')) {
     const session = await runSessionChecks(baseUrl);
     errors.push(...session.errors);
+  }
+  // PR 3: converter honesty, flats, editor / convert feedback (skip with --no-converter).
+  if (!args.includes('--no-converter')) {
+    const converter = await runConverterChecks(baseUrl);
+    errors.push(...converter.errors);
   }
   if (server) server.stop();
   console.log(JSON.stringify({ visited: observations.visitedScreens, errors }, null, 2));
