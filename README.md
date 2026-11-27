@@ -46,6 +46,7 @@ These drive real headless Chrome through the whole app with Playwright. They exp
 node tests/browser/check-app.cjs                  # tour every screen; fails on any console/page error
 node tests/browser/session-checks.cjs            # start/stop, double tap, Back, hidden page, mic failure, picture-delay reset (also run by check-app)
 node tests/browser/converter-checks.cjs          # (run by check-app) converter lines, guess notes, Eb spelling, Save/Convert feedback
+node tests/browser/history-checks.cjs            # (run by check-app) schema-1 data migrates to 2, new history fields, rename keeps history
 node tests/browser/check-app.cjs --shots out/     # same, and save screenshots into out/
 node tests/browser/compare-old-new.cjs            # same tour on commit 2aaf0bd and on your working tree; fails if anything differs
 node tests/browser/compare-old-new.cjs <commit>   # compare against another baseline commit
@@ -70,6 +71,8 @@ js/session.js         session state machine, decideEnd (what stopping means), mi
 js/wakelock.js        Screen Wake Lock while a session runs
 js/audio.js           audio context, synthesised piano, microphone chain, trill mode
 js/store.js           localStorage wrapper and the storage key names
+js/migrate.js         migrate(storage): data-shape version (vp_schema) and the steps that bring saved data up to date
+js/history.js         history entries (what a run saves), previousRunsOf (by exercise id), the 200-entry cap
 js/state.js           in-memory state shared by screens (exercises, default range, "practice all" queue)
 js/ui/dom.js          $, esc, range-slider fill
 js/ui/navigation.js   screen switching and the browser Back button
@@ -91,11 +94,43 @@ and importable from Node.
 | Key | Shape | Meaning |
 | --- | --- | --- |
 | `vp_ex` | array of exercises (below) | The library. Missing = the three built-in samples are shown. |
-| `vp_hist` | array of `{name, pct, ts, date}`, newest first, at most 200 | One entry per finished run that heard the singer. `pct` = % of notes landed in tune, `ts` = `Date.now()`, `date` = short display date such as "Nov 27". |
+| `vp_hist` | array of entries, newest first, at most 200 (below) | One entry per finished run that heard the singer. |
 | `vp_def` | `{start, end}` (MIDI note numbers) | Range used when a converted line names no starting note. Default `{start: 48, end: 55}` (C3 to G3). |
 | `vp_lat` | number, seconds (0 to 0.5) | Picture delay set with the slider. Missing/null = automatic. |
 | `vp_vlag` | number, seconds | Voice lag learned from your sessions (default 0.15). |
 | `vp_theme` | `""`, `"light"` or `"dark"` | Colour theme; empty = match the phone. |
+| `vp_schema` | integer | Data-shape version. Absent = 1 (the original shape). Now 2. See "Migrations". |
+
+A history entry:
+
+```
+{ name: "5-note scale",  // the exercise's name when it was sung (a label; renaming does not rewrite it)
+  exId: "s1",            // id of the exercise it belongs to; absent on old entries that matched no exercise
+  pct: 80, ts: 1764000000000, date: "Nov 27",   // % of notes landed in tune, Date.now(), short display date
+  avgCents: 14,          // average cents off, ignoring sharp / flat
+  lean: -6,              // signed average cents (negative = flat)
+  steadiness: 8.2,       // typical wobble on held notes, cents
+  clarity: 0.91,         // 0 to 1; null when the run had no tone notes (pure lip trill)
+  ring: 0.12,            // null likewise
+  topNote: 64,           // MIDI of the highest note landed within 50 cents; null if none
+  rounds: 5, notes: 40 } // rounds completed, notes in the run
+```
+
+Entries from before schema 2 have only `name, pct, ts, date` (plus `exId` once migrated). Everything that reads history
+must cope with the other fields being absent.
+
+## Migrations
+
+`migrate()` (js/migrate.js) runs at startup before the data is loaded. It reads `vp_schema`, applies the steps in `STEPS`
+in order, and writes the changed keys and then `vp_schema` only after every step worked. A step that throws, a write that
+fails, or a version newer than the app knows leaves saved data exactly as it was (a `console.warn`, not an error) and the
+app carries on with the in-memory result. Steps never drop what they do not understand and are safe to run twice.
+
+- 1 to 2: adds `exId` to each history entry by matching `name` against today's exercises (the three built-in samples when
+  nothing is saved yet). If several exercises share a name, the first wins. Unmatched entries stay without `exId`: they still
+  count in the journey but do not feed "best yet" / "up from last time".
+
+To add a step: append `{ from: N, run }` to `STEPS` and raise `CURRENT_SCHEMA`; add a test with a realistic fixture of the old shape.
 
 An exercise:
 

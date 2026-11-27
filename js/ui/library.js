@@ -4,6 +4,7 @@ import { $, esc } from './dom.js';
 import { state } from '../state.js';
 import { store, KEYS } from '../store.js';
 import { describeExercise } from '../exercise.js';
+import { entryLabel } from '../history.js';
 import { openPractice } from './practice.js';
 import { openEditor } from './editor.js';
 
@@ -30,7 +31,7 @@ export function journeyStats(history, nowMs = Date.now()) {
 /** Journey list: newest 3, then 6 more each time "Load more" is tapped. */
 function renderHistory(history = store.get(KEYS.history, [])) {
   $('hist').innerHTML = history.length
-    ? history.slice(0, state.historyShown).map((entry) => `<div class="stat" style="grid-template-columns:minmax(0,1fr) auto"><span>${esc(entry.name)} <small>· ${esc(entry.date)}</small></span><span>${esc(entry.pct)}% landed</span></div>`).join('')
+    ? history.slice(0, state.historyShown).map((entry) => `<div class="stat" style="grid-template-columns:minmax(0,1fr) auto"><span>${esc(entryLabel(entry, state.exercises))} <small>· ${esc(entry.date)}</small></span><span>${esc(entry.pct)}% landed</span></div>`).join('')
     : 'No sessions yet.';
   const left = history.length - state.historyShown;
   $('moreBtn').hidden = left <= 0;

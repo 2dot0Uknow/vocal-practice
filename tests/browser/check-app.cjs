@@ -7,6 +7,7 @@ const { runScenario } = require('./scenario.cjs');
 const { serve } = require('./serve.cjs');
 const { runSessionChecks } = require('./session-checks.cjs');
 const { runConverterChecks } = require('./converter-checks.cjs');
+const { runHistoryChecks } = require('./history-checks.cjs');
 
 (async () => {
   const args = process.argv.slice(2);
@@ -30,6 +31,11 @@ const { runConverterChecks } = require('./converter-checks.cjs');
   if (!args.includes('--no-converter')) {
     const converter = await runConverterChecks(baseUrl);
     errors.push(...converter.errors);
+  }
+  // PR 4: schema migration, history by exercise id, richer entries (skip with --no-history).
+  if (!args.includes('--no-history')) {
+    const history = await runHistoryChecks(baseUrl);
+    errors.push(...history.errors);
   }
   if (server) server.stop();
   console.log(JSON.stringify({ visited: observations.visitedScreens, errors }, null, 2));

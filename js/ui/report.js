@@ -6,8 +6,7 @@ import { navTo } from './navigation.js';
 import { noteName, spellingOf } from '../music.js';
 import { store, KEYS } from '../store.js';
 import { state } from '../state.js';
-
-const MAX_HISTORY = 200;
+import { historyEntry, addToHistory } from '../history.js';
 
 /** The stat bars: label, a coloured bar, and a word. */
 export const statRowsHTML = (rows) => rows.map(({ name, value, label }) => `<div class="stat"><span>${name}</span><span class="b"><i style="width:${Math.round(value)}%;background:${value >= 70 ? 'var(--on)' : value >= 45 ? 'var(--near)' : 'var(--far)'}"></i></span><span>${esc(label)}</span></div>`).join('');
@@ -28,17 +27,6 @@ export function noteStripsHTML(results, exercise) {
   }).join('')}</div>`).join('');
 }
 
-/** What gets saved to history for a finished run (vp_hist entries, newest first). */
-export const historyEntry = (exercise, pct, now = new Date()) => ({
-  name: exercise.name,
-  pct,
-  ts: now.getTime(),
-  date: now.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-});
-
-/** Earlier runs of the same exercise (matched by name), newest first. */
-export const previousRunsOf = (exercise) => store.get(KEYS.history, []).filter((entry) => entry.name == exercise.name);
-
 /**
  * Fill the report screen from a summary, save the run if anything was heard, and open it.
  * options.title replaces the heading; options.save = false shows the report without saving it (stopped runs).
@@ -53,9 +41,7 @@ export function showReport(exercise, summary, { title = exercise.name, save = tr
   $('cheer').textContent = summary.cheer;
   $('notesOut').innerHTML = noteStripsHTML(summary.results, exercise);
   if (save && summary.saveable) {
-    const history = store.get(KEYS.history, []);
-    history.unshift(historyEntry(exercise, summary.pct));
-    store.set(KEYS.history, history.slice(0, MAX_HISTORY));
+    store.set(KEYS.history, addToHistory(store.get(KEYS.history, []), historyEntry(exercise, summary)));
     state.historyShown = 3;
   }
   $('trNote').hidden = !summary.hasTrillNotes;

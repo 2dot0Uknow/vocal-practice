@@ -8,10 +8,20 @@ export const KEYS = {
   pictureDelay: 'vp_lat',
   voiceLag: 'vp_vlag',
   theme: 'vp_theme',
+  schema: 'vp_schema', // integer data-shape version, see migrate.js (absent = 1)
 };
 
+// Values to use instead of what is saved, for keys whose migration failed (see migrate.js and main.js).
+// Writing a key saves for real and drops its stand-in.
+const inMemory = new Map();
+
 export const store = {
+  /** Use these values (key -> value) for reads until the key is next written. */
+  useInMemory(values) {
+    Object.entries(values).forEach(([key, value]) => inMemory.set(key, value));
+  },
   get(key, fallback) {
+    if (inMemory.has(key)) return inMemory.get(key) ?? fallback;
     try {
       return JSON.parse(localStorage.getItem(key)) ?? fallback;
     } catch (error) {
@@ -19,6 +29,7 @@ export const store = {
     }
   },
   set(key, value) {
+    inMemory.delete(key);
     try {
       localStorage.setItem(key, JSON.stringify(value));
     } catch (error) {
@@ -26,6 +37,7 @@ export const store = {
     }
   },
   remove(key) {
+    inMemory.delete(key);
     try {
       localStorage.removeItem(key);
     } catch (error) {

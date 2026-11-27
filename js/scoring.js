@@ -134,7 +134,7 @@ const pickLabel = (value, firstLimit, secondLimit, words) => (value < firstLimit
  *  - partial: a stopped run. `targets` is then only the notes that finished: every number is based on
  *    those notes alone, the cheer line does not compare with earlier runs, and the result is not saveable.
  * Returns {voiceLag (updated), results, heardCount, total, inTune, pct, avgAbs, lean, stability, clarity,
- * ring, missCount, subtitle, rows [{name, value 0..100, label}], tips, good, cheer, hasTrillNotes, saveable}.
+ * ring, toneCount (how many notes the tone numbers rest on), missCount, subtitle, rows [{name, value 0..100, label}], tips, good, cheer, hasTrillNotes, saveable}.
  */
 export function summarizeSession({ targets, frames, voiceLag, previousRuns, partial = false }) {
   const estimate = estimateLag(frames, targets);
@@ -261,6 +261,7 @@ export function summarizeSession({ targets, frames, voiceLag, previousRuns, part
     stability,
     clarity,
     ring,
+    toneCount: toneNotes.length,
     missCount,
     subtitle,
     rows,

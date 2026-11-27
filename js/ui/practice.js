@@ -16,7 +16,8 @@ import { navTo, goHome, currentScreen } from './navigation.js';
 import { createSessionMachine, decideEnd, reportTitle, MIC_MESSAGES } from '../session.js';
 import { acquireWakeLock, releaseWakeLock } from '../wakelock.js';
 import { createRoll } from './roll.js';
-import { previousRunsOf, showReport } from './report.js';
+import { showReport } from './report.js';
+import { previousRunsOf } from '../history.js';
 
 let currentExercise = null;
 let sequence = null;            // the built session: {targets, plays, end}
@@ -172,7 +173,7 @@ function endSession(reason) {
     targets: decision.scoredTargets,
     frames: recorded,
     voiceLag,
-    previousRuns: decision.partial ? [] : previousRunsOf(exercise),
+    previousRuns: decision.partial ? [] : previousRunsOf(store.get(KEYS.history, []), exercise),
     partial: decision.partial,
   });
   // The learned voice lag is calibration, not progress, so it is kept even for a stopped run.
