@@ -45,6 +45,7 @@ These drive real headless Chrome through the whole app with Playwright. They exp
 ```
 node tests/browser/check-app.cjs                  # tour every screen; fails on any console/page error
 node tests/browser/session-checks.cjs            # start/stop, double tap, Back, hidden page, mic failure, picture-delay reset (also run by check-app)
+node tests/browser/converter-checks.cjs          # (run by check-app) converter lines, guess notes, Eb spelling, Save/Convert feedback
 node tests/browser/check-app.cjs --shots out/     # same, and save screenshots into out/
 node tests/browser/compare-old-new.cjs            # same tour on commit 2aaf0bd and on your working tree; fails if anything differs
 node tests/browser/compare-old-new.cjs <commit>   # compare against another baseline commit
@@ -60,7 +61,7 @@ when a later change alters behaviour on purpose, expect (and review) the differe
 index.html            markup only
 styles.css            all styles (design intent in the comment at the top)
 js/main.js            entry point: loads data, wires the screens together
-js/music.js           note names, toMidi / midiToHz / hzToMidi, parsePat (pattern language), rootsOf (round roots)
+js/music.js           note names (sharps, flats or automatic spelling), toMidi / midiToHz / hzToMidi, parsePat (pattern language), rootsOf (round roots)
 js/exercise.js        exercise model (normEx), sample exercises, buildSession (timeline of notes and piano plays), describeExercise
 js/converter.js       parseLine / parseAll: coach's text -> exercise
 js/pitch.js           detect: McLeod pitch detection on a window of samples
@@ -109,7 +110,8 @@ An exercise:
   both: false,           // come back down after the top
   step: 1,               // semitones between rounds (1 or 2)
   bpm: 90,               // 30 to 200
-  hold: 2 }              // beats a held (~) note lasts, 1 to 4
+  hold: 2,               // beats a held (~) note lasts, 1 to 4
+  spell: "b" }           // optional: "b" (written with flats) or "#" (sharps). Absent = automatic: Db Eb Ab Bb, F#
 ```
 
 ## Credits
