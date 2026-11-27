@@ -44,6 +44,7 @@ These drive real headless Chrome through the whole app with Playwright. They exp
 
 ```
 node tests/browser/check-app.cjs                  # tour every screen; fails on any console/page error
+node tests/browser/session-checks.cjs            # start/stop, double tap, Back, hidden page, mic failure, picture-delay reset (also run by check-app)
 node tests/browser/check-app.cjs --shots out/     # same, and save screenshots into out/
 node tests/browser/compare-old-new.cjs            # same tour on commit 2aaf0bd and on your working tree; fails if anything differs
 node tests/browser/compare-old-new.cjs <commit>   # compare against another baseline commit
@@ -64,6 +65,8 @@ js/exercise.js        exercise model (normEx), sample exercises, buildSession (t
 js/converter.js       parseLine / parseAll: coach's text -> exercise
 js/pitch.js           detect: McLeod pitch detection on a window of samples
 js/scoring.js         err, strictAt, activeAt, estimateLag, scoreNotes, summarizeSession (all of the report's numbers and wording)
+js/session.js         session state machine, decideEnd (what stopping means), mic-failure wording (pure)
+js/wakelock.js        Screen Wake Lock while a session runs
 js/audio.js           audio context, synthesised piano, microphone chain, trill mode
 js/store.js           localStorage wrapper and the storage key names
 js/state.js           in-memory state shared by screens (exercises, default range, "practice all" queue)
@@ -79,7 +82,7 @@ js/ui/theme.js        theme button
 tests/                node --test files; helpers/ (synthetic signals), fixtures/, tools/ (generator), browser/ (Playwright)
 ```
 
-Everything outside `js/ui/`, `js/audio.js`, `js/main.js` and `js/state.js` is pure (no DOM, no audio, no storage)
+Everything outside `js/ui/`, `js/audio.js`, `js/wakelock.js`, `js/main.js` and `js/state.js` is pure (no DOM, no audio, no storage)
 and importable from Node.
 
 ## What is stored on the device (localStorage)

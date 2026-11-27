@@ -12,15 +12,19 @@ import {
   ensureAudio, setPianoVolume, openMic, micInputLatency, outputDelayEstimate, getAudioContext,
   resetTrillMode, setTrillMode, captureMicSamples, analysisWindow, brightness, playPianoNote, closeAudio,
 } from '../audio.js';
-import { navTo, goHome } from './navigation.js';
+import { navTo, goHome, currentScreen } from './navigation.js';
+import { createSessionMachine, decideEnd, reportTitle, MIC_MESSAGES } from '../session.js';
+import { acquireWakeLock, releaseWakeLock } from '../wakelock.js';
 import { createRoll } from './roll.js';
 import { previousRunsOf, showReport } from './report.js';
 
 let currentExercise = null;
 let sequence = null;            // the built session: {targets, plays, end}
 let frames = [];                // one entry per analysis of the microphone
-let running = false;
+const session = createSessionMachine();   // idle -> starting -> running -> stopping -> idle
+let sessionToken = 0;           // changes whenever a session starts or is torn down, so a late mic answer can tell it is stale
 let animationFrame = 0;
+const isRunning = () => session.state === 'running';
 
 // Delay between the piano being scheduled and you hearing it (output latency), in seconds.
 // null = work it out automatically at Start. The picture-delay slider overrides it (saved as vp_lat).
@@ -43,8 +47,8 @@ function showPictureDelay() {
   $('syncV').textContent = outputLatency == null ? 'auto' : Math.round(outputLatency * 1000) + ' ms';
 }
 
-function drawRoll(now = running ? songTime() : 0) {
-  roll.draw({ sequence, frames, now, running, voiceLag });
+function drawRoll(now = isRunning() ? songTime() : 0) {
+  roll.draw({ sequence, frames, now, running: isRunning(), voiceLag });
 }
 
 /** Re-read the theme colours and redraw (called after the theme changes). */
@@ -53,27 +57,54 @@ export function refreshRoll() {
   drawRoll();
 }
 
+/** Put the practice screen back to its idle look for the current exercise. */
+function resetPracticeView() {
+  sequence = buildSession(currentExercise, 0);
+  frames = [];
+  $('goBtn').textContent = 'Start';
+  $('goBtn').disabled = false;
+  $('rSyl').textContent = sequence.targets[0]?.syl || '–';
+  roll.fit(sequence, 0, false);
+  drawRoll();
+}
+
 export function openPractice(exercise) {
+  abortSession();
+  hideMicCard();
   currentExercise = exercise;
   navTo('prac');
   $('pName').textContent = exercise.name + (state.queue.length ? `  ·  ${state.queue.length} more after this` : '');
   $('pInfo').textContent = describeExercise(exercise);
-  sequence = buildSession(exercise, 0);
-  frames = [];
-  $('goBtn').textContent = 'Start';
-  $('rSyl').textContent = sequence.targets[0]?.syl || '–';
-  roll.fit(sequence, 0, running);
-  drawRoll();
+  resetPracticeView();
+}
+
+function showMicCard(reason) {
+  $('micCardMsg').textContent = MIC_MESSAGES[reason] || MIC_MESSAGES.other;
+  $('micCard').hidden = false;
+}
+
+function hideMicCard() {
+  $('micCard').hidden = true;
 }
 
 async function startSession() {
-  if (running) {
-    stopSession();
+  if (!session.can('starting')) return;   // already starting, running or stopping: a second tap does nothing
+  session.go('starting');
+  const token = ++sessionToken;
+  hideMicCard();
+  $('goBtn').disabled = true;
+  $('goBtn').textContent = 'Starting…';
+  ensureAudio();
+  const mic = await openMic();
+  // Anything may have happened while the browser was asking: Back, the phone locking, another Start.
+  if (token !== sessionToken) return;     // already torn down by whoever changed things
+  if (!mic.ok) {
+    abortSession();
+    if (mic.reason !== 'cancelled') showMicCard(mic.reason);
     return;
   }
-  ensureAudio();
-  if (!(await openMic())) {
-    $('rCents').textContent = 'Mic unavailable. Allow access, and open from the https:// address.';
+  if (session.state !== 'starting' || currentScreen() !== 'prac') {
+    abortSession();
     return;
   }
   if (outputLatency == null) {
@@ -90,23 +121,69 @@ async function startSession() {
   recentTrillPitches = [];
   lastLagEstimateAt = 0;
   sequence.plays.forEach((play) => play.m.forEach((midi) => playPianoNote(midi, play.t, play.d)));
-  running = true;
+  session.go('running');
+  acquireWakeLock();
+  $('goBtn').disabled = false;
   $('goBtn').textContent = 'Stop';
   loop();
 }
 
-/** Stop a running session and release the piano and the microphone. */
-export function stopSession() {
-  if (!running) return;
-  running = false;
+/** Release the piano, the microphone, the wake lock and the animation loop. Does not touch the session state. */
+function teardown() {
+  sessionToken++;
   cancelAnimationFrame(animationFrame);
   closeAudio();
+  releaseWakeLock();
+}
+
+/**
+ * Silently end whatever is going on (leaving the screen, opening another exercise): no report.
+ * main.js hands this to the navigation as "stop the session".
+ */
+export function abortSession() {
+  hideMicCard();                      // leaving the screen (or ending a start) clears any mic message
+  if (session.state === 'idle') return;
+  if (session.state === 'running') session.go('stopping');
+  teardown();
+  if (session.can('idle')) session.go('idle');
   $('goBtn').textContent = 'Start';
+  $('goBtn').disabled = false;
+}
+
+/**
+ * The one way a session ends with a report decision. reason: 'finished' (ran to the end),
+ * 'stopped' (Stop button) or 'hidden' (phone locked / app switched). See decideEnd in session.js.
+ */
+function endSession(reason) {
+  if (session.state === 'idle' || session.state === 'stopping') return;
+  const wasRunning = isRunning();
+  const exercise = currentExercise;
+  const endedAt = wasRunning ? songTime() : null;   // read the clock before the audio is closed
+  const { targets } = sequence;
+  const recorded = frames;
+  abortSession();
+  if (!wasRunning) return;                          // still waiting for the mic: nothing was sung
+  const decision = decideEnd({ reason, songTime: endedAt, targets, voiceLag });
+  if (!decision.showReport) {
+    resetPracticeView();                            // under one round: back to a quiet, idle practice screen
+    return;
+  }
+  const summary = summarizeSession({
+    targets: decision.scoredTargets,
+    frames: recorded,
+    voiceLag,
+    previousRuns: decision.partial ? [] : previousRunsOf(exercise),
+    partial: decision.partial,
+  });
+  // The learned voice lag is calibration, not progress, so it is kept even for a stopped run.
+  voiceLag = summary.voiceLag;
+  store.set(KEYS.voiceLag, voiceLag);
+  showReport(exercise, summary, { title: reportTitle(exercise.name, decision), save: decision.save });
 }
 
 /** One animation frame: listen, detect the pitch, update the readouts and the roll. */
 function loop() {
-  if (!running) return;
+  if (!isRunning()) return;
   captureMicSamples();
   const now = songTime();
   const target = activeAt(sequence.targets, now) || sequence.targets.find((x) => x.t0 > now);
@@ -155,25 +232,10 @@ function loop() {
   }
   drawRoll(now);
   if (now > sequence.end) {
-    const exercise = currentExercise;
-    stopSession();
-    finishSession(exercise);
+    endSession('finished');
     return;
   }
   animationFrame = requestAnimationFrame(loop);
-}
-
-/** Score the recorded session, remember the learned voice lag and show the report. */
-function finishSession(exercise) {
-  const summary = summarizeSession({
-    targets: sequence.targets,
-    frames,
-    voiceLag,
-    previousRuns: previousRunsOf(exercise),
-  });
-  voiceLag = summary.voiceLag;
-  store.set(KEYS.voiceLag, voiceLag);
-  showReport(exercise, summary);
 }
 
 export function initPractice() {
@@ -193,7 +255,21 @@ export function initPractice() {
   };
   showPictureDelay();
 
-  $('goBtn').onclick = startSession;
+  $('syncReset').onclick = () => {
+    outputLatency = null;
+    store.remove(KEYS.pictureDelay);
+    showPictureDelay();
+  };
+
+  $('goBtn').onclick = () => (isRunning() ? endSession('stopped') : startSession());
+  $('micRetry').onclick = startSession;
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      if (session.state === 'starting' || isRunning()) endSession('hidden');
+    } else if (isRunning()) {
+      acquireWakeLock();   // the browser drops the lock when the page is hidden
+    }
+  });
   $('backBtn').onclick = goHome;
   $('againBtn').onclick = () => openPractice(currentExercise);
   $('nextBtn').onclick = () => openPractice(state.queue.shift());

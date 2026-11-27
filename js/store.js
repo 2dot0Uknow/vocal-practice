@@ -25,4 +25,11 @@ export const store = {
       // Ignored on purpose: see the comment at the top of the file.
     }
   },
+  remove(key) {
+    try {
+      localStorage.removeItem(key);
+    } catch (error) {
+      // Ignored on purpose.
+    }
+  },
 };

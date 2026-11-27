@@ -2,6 +2,7 @@
 // This module owns all audio state; nothing else touches AudioContext objects directly.
 
 import { midiToHz } from './music.js';
+import { classifyMicError } from './session.js';
 
 let context = null;       // AudioContext (created on first use, closed when a session ends)
 let masterGain = null;    // piano volume
@@ -72,16 +73,29 @@ export function playPianoNote(midi, startTime, duration, output = masterGain, os
   });
 }
 
-/** Ask for the microphone and build the analysis chain. Resolves false if it is unavailable. */
+/**
+ * Ask for the microphone and build the analysis chain.
+ * Resolves {ok: true}, or {ok: false, reason} where reason is 'denied', 'notfound', 'insecure', 'other'
+ * (see classifyMicError) or 'cancelled' (the audio was closed while the permission prompt was open).
+ */
 export async function openMic() {
-  if (micStream) return true;
+  if (micStream) return { ok: true };
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return { ok: false, reason: 'insecure' };
+  const contextAtStart = context;
   // Raw signal: the browser's voice processing would distort the pitch readings.
   const constraints = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
+  let stream;
   try {
-    micStream = await navigator.mediaDevices.getUserMedia({ audio: constraints });
+    stream = await navigator.mediaDevices.getUserMedia({ audio: constraints });
   } catch (error) {
-    return false;
+    return { ok: false, reason: classifyMicError(error) };
   }
+  if (!contextAtStart || context !== contextAtStart) {
+    // The session was abandoned while the browser was asking: let the mic go.
+    stream.getTracks().forEach((track) => track.stop());
+    return { ok: false, reason: 'cancelled' };
+  }
+  micStream = stream;
   const source = context.createMediaStreamSource(micStream);
   const highpass = context.createBiquadFilter();
   highpass.type = 'highpass';
@@ -97,7 +111,7 @@ export async function openMic() {
   timeBuffer = new Float32Array(analyser.fftSize);
   decimated = new Float32Array(TRILL_WINDOW);
   spectrumBuffer = new Float32Array(analyser.frequencyBinCount);
-  return true;
+  return { ok: true };
 }
 
 /** The microphone's own reported input latency in seconds (a guess of 20 ms when it is unknown). */

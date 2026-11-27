@@ -13,6 +13,15 @@ export const err = (midi, targetMidi) => {
   return cents - 1200 * Math.round(cents / 1200);
 };
 
+/** How long after a note ends its scoring window still collects frames (late finishes count), in seconds. */
+export const scoringTail = (target) => Math.min(0.3, 0.6 * (target.t1 - target.t0));
+
+/**
+ * True when a note can be scored fairly at song time `songTime`: its whole scoring window
+ * (end + scoringTail, shifted later by the voice lag, since frames are shifted back by it) has been heard.
+ */
+export const noteFinishedBy = (target, songTime, voiceLag = 0) => target.t1 + voiceLag + scoringTail(target) <= songTime;
+
 /** The note being sung at time t, allowing 0.15 s of grace after it ends (so a late finish still counts). */
 export const activeAt = (targets, t) => targets.find((target) => t >= target.t0 && t < target.t1 + 0.15);
 
@@ -84,7 +93,7 @@ export function scoreNotes(targets, frames) {
   return targets.map((target, index) => {
     const duration = target.t1 - target.t0;
     const windowStart = target.t0 + Math.min(0.35 * duration, 0.06);
-    const windowEnd = target.t1 + Math.min(0.3, 0.6 * duration);
+    const windowEnd = target.t1 + scoringTail(target);
     const previousTarget = targets[index - 1];
     const nextTarget = targets[index + 1];
     const usable = frames.filter((frame) => {
@@ -111,6 +120,9 @@ export function scoreNotes(targets, frames) {
   });
 }
 
+/** The cheer line of a stopped run (it is never compared with earlier runs). */
+export const PARTIAL_CHEER = 'Partial run. Not saved to your journey.';
+
 // Pick a label from three words by two thresholds (lower value = first word).
 const pickLabel = (value, firstLimit, secondLimit, words) => (value < firstLimit ? words[0] : value < secondLimit ? words[1] : words[2]);
 
@@ -119,10 +131,12 @@ const pickLabel = (value, firstLimit, secondLimit, words) => (value < firstLimit
  *  - targets, frames: the session; frames are as recorded (not yet shifted by the voice lag)
  *  - voiceLag: the current lag estimate (seconds)
  *  - previousRuns: earlier history entries for this exercise, newest first ({pct})
+ *  - partial: a stopped run. `targets` is then only the notes that finished: every number is based on
+ *    those notes alone, the cheer line does not compare with earlier runs, and the result is not saveable.
  * Returns {voiceLag (updated), results, heardCount, total, inTune, pct, avgAbs, lean, stability, clarity,
  * ring, missCount, subtitle, rows [{name, value 0..100, label}], tips, good, cheer, hasTrillNotes, saveable}.
  */
-export function summarizeSession({ targets, frames, voiceLag, previousRuns }) {
+export function summarizeSession({ targets, frames, voiceLag, previousRuns, partial = false }) {
   const estimate = estimateLag(frames, targets);
   const lag = estimate != null ? estimate : voiceLag;
   const results = scoreNotes(targets, frames.map((frame) => ({ ...frame, t: frame.t - lag })));
@@ -220,7 +234,9 @@ export function summarizeSession({ targets, frames, voiceLag, previousRuns }) {
   }
 
   let cheer = '';
-  if (heard.length) {
+  if (partial) {
+    cheer = PARTIAL_CHEER;
+  } else if (heard.length) {
     if (!previousRuns.length) {
       cheer = 'First run logged. This is your starting point.';
     } else {
@@ -252,6 +268,6 @@ export function summarizeSession({ targets, frames, voiceLag, previousRuns }) {
     good: good.slice(0, 4),
     cheer,
     hasTrillNotes: results.some((result) => result.trill),
-    saveable: heard.length > 0,
+    saveable: !partial && heard.length > 0,
   };
 }

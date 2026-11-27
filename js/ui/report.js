@@ -39,9 +39,12 @@ export const historyEntry = (exercise, pct, now = new Date()) => ({
 /** Earlier runs of the same exercise (matched by name), newest first. */
 export const previousRunsOf = (exercise) => store.get(KEYS.history, []).filter((entry) => entry.name == exercise.name);
 
-/** Fill the report screen from a summary, save the run if anything was heard, and open it. */
-export function showReport(exercise, summary) {
-  $('repTitle').textContent = exercise.name;
+/**
+ * Fill the report screen from a summary, save the run if anything was heard, and open it.
+ * options.title replaces the heading; options.save = false shows the report without saving it (stopped runs).
+ */
+export function showReport(exercise, summary, { title = exercise.name, save = true } = {}) {
+  $('repTitle').textContent = title;
   $('sPct').textContent = summary.pct + '%';
   $('sSub').textContent = summary.subtitle;
   $('stats').innerHTML = statRowsHTML(summary.rows);
@@ -49,7 +52,7 @@ export function showReport(exercise, summary) {
   $('good').innerHTML = listItemsHTML(summary.good);
   $('cheer').textContent = summary.cheer;
   $('notesOut').innerHTML = noteStripsHTML(summary.results, exercise);
-  if (summary.saveable) {
+  if (save && summary.saveable) {
     const history = store.get(KEYS.history, []);
     history.unshift(historyEntry(exercise, summary.pct));
     store.set(KEYS.history, history.slice(0, MAX_HISTORY));

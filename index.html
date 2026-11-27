@@ -48,11 +48,13 @@
     <div class="read"><div><div class="sub">You</div><div class="big" id="rNote">–</div></div><div class="sing"><div class="sub">Sing</div><div class="big" id="rSyl">–</div></div><div class="cents"><div>Target <b id="rTarget">–</b></div><div id="rCents">&nbsp;</div></div></div>
     <div class="meter"><i id="needle"></i></div>
     <div class="fig"><canvas id="cv"></canvas></div>
+    <div id="micCard" class="card warn" role="alert" hidden><p id="micCardMsg" style="margin:0 0 10px"></p><button id="micRetry">Try again</button></div>
     <div class="row" style="margin-top:12px"><button class="pri" id="goBtn">Start</button><button class="ghost" id="backBtn">Back</button></div>
     <label for="vol">Piano volume</label><input id="vol" type="range" min="0" max="1" step="0.05" value="0.6" style="padding:0">
     <details style="margin-top:6px"><summary>Fine-tune the picture (optional)</summary>
       <p class="note" style="margin-top:0">Your voice line lines itself up automatically. This only shifts the moving blocks to match when you hear the piano. Slide right if a block reaches the blue line before you hear its note.</p>
       <label for="sync">Picture delay: <span id="syncV"></span></label><input id="sync" type="range" min="0" max="500" step="10" value="100" style="padding:0">
+      <button class="ghost" id="syncReset" style="min-height:36px;font-size:14px;margin-top:6px">Reset to automatic</button>
     </details>
   </section>
 

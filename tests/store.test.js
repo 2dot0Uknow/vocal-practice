@@ -10,6 +10,7 @@ beforeEach(() => {
   failWrites = false;
   globalThis.localStorage = {
     getItem: (key) => (data.has(key) ? data.get(key) : null),
+    removeItem: (key) => data.delete(key),
     setItem: (key, value) => {
       if (failWrites) throw new Error('quota');
       data.set(key, value);
@@ -58,4 +59,12 @@ test('store.get never throws when localStorage is missing', () => {
   delete globalThis.localStorage;
   assert.equal(store.get('vp_ex', 'fallback'), 'fallback');
   assert.doesNotThrow(() => store.set('vp_ex', 1));
+});
+
+test('store.remove forgets a key so reads fall back to the default again (B11: picture delay back to automatic)', () => {
+  store.set(KEYS.pictureDelay, 0.23);
+  assert.equal(store.get(KEYS.pictureDelay, null), 0.23);
+  store.remove(KEYS.pictureDelay);
+  assert.equal(store.get(KEYS.pictureDelay, null), null);
+  assert.equal(data.has('vp_lat'), false);
 });

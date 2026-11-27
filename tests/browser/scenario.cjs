@@ -13,7 +13,7 @@ const SCREENS = ['lib', 'add', 'prac', 'rep'];
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Open the app in a fresh browser context and collect every console / page error. */
-async function openApp(baseUrl, { colorScheme = 'light' } = {}) {
+async function openApp(baseUrl, { colorScheme = 'light', initScript = null } = {}) {
   const browser = await chromium.launch({ executablePath: '/usr/bin/google-chrome', args: CHROME_ARGS });
   const context = await browser.newContext({
     viewport: { width: 390, height: 844 },
@@ -23,6 +23,7 @@ async function openApp(baseUrl, { colorScheme = 'light' } = {}) {
     reducedMotion: 'reduce',
   });
   const errors = [];
+  if (initScript) await context.addInitScript(initScript);
   const page = await context.newPage();
   // No network in CI-like environments: answer the Google Fonts request with an empty stylesheet so it is not an "error".
   await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.fulfill({ status: 200, contentType: 'text/css', body: '' }));

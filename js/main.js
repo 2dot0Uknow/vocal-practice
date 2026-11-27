@@ -7,10 +7,10 @@ import { initTheme } from './ui/theme.js';
 import { initLibrary, renderLibrary } from './ui/library.js';
 import { initEditor, stopPreview } from './ui/editor.js';
 import { initPhoto } from './ui/photo.js';
-import { initPractice, stopSession, refreshRoll } from './ui/practice.js';
+import { initPractice, abortSession, refreshRoll } from './ui/practice.js';
 
 loadState();
-initNavigation({ stopSession, stopPreview, showLibrary: renderLibrary });
+initNavigation({ stopSession: abortSession, stopPreview, showLibrary: renderLibrary });
 initLibrary();
 initEditor();
 initPhoto();
