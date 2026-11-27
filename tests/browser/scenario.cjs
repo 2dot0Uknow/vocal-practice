@@ -1,6 +1,10 @@
 // A scripted tour of the whole app in headless Chrome. Used by check-app.cjs and compare-old-new.cjs.
 // Everything it observes is returned as plain data so two builds can be compared.
 const { chromium } = require('/opt/npm-tools/node_modules/playwright');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { execFileSync } = require('node:child_process');
 
 const CHROME_ARGS = [
   '--use-fake-ui-for-media-stream',      // auto-accept the microphone prompt
@@ -13,8 +17,23 @@ const SCREENS = ['lib', 'add', 'prac', 'rep'];
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Open the app in a fresh browser context and collect every console / page error. */
-async function openApp(baseUrl, { colorScheme = 'light', initScript = null } = {}) {
-  const browser = await chromium.launch({ executablePath: '/usr/bin/google-chrome', args: CHROME_ARGS });
+/**
+ * A steady one-second tone (196 Hz, G3, a whole number of cycles so it loops without a click) for the fake microphone.
+ * Chrome's default fake mic only beeps for ~60 ms every half second, which at ~50 analyses per second gives a note
+ * 3 frames or fewer (B12): whether a note counts as heard then depends on luck. A steady tone does not.
+ * Written to the temp folder with ffmpeg on first use.
+ */
+function steadyToneFile() {
+  const file = path.join(os.tmpdir(), 'vp-steady-196hz.wav');
+  if (!fs.existsSync(file)) {
+    execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'sine=frequency=196:duration=1:sample_rate=16000', '-ac', '1', '-c:a', 'pcm_s16le', '-y', file]);
+  }
+  return file;
+}
+
+async function openApp(baseUrl, { colorScheme = 'light', initScript = null, steadyTone = false } = {}) {
+  const args = steadyTone ? [...CHROME_ARGS, `--use-file-for-fake-audio-capture=${steadyToneFile()}`] : CHROME_ARGS;
+  const browser = await chromium.launch({ executablePath: '/usr/bin/google-chrome', args });
   const context = await browser.newContext({
     viewport: { width: 390, height: 844 },
     deviceScaleFactor: 1,
@@ -255,4 +274,4 @@ async function runScenario(baseUrl, { shots } = {}) {
   return { errors, observations: obs };
 }
 
-module.exports = { runScenario, openApp, normaliseStorage, CHROME_ARGS, sleep };
+module.exports = { runScenario, openApp, normaliseStorage, CHROME_ARGS, sleep, steadyToneFile };

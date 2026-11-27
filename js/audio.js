@@ -51,6 +51,8 @@ export function createPreviewBus() {
 /**
  * Play one piano note: six slightly stretched harmonics under a quick-attack, slow-decay envelope.
  * Pass `oscillators` (an array) to collect the oscillators so they can be stopped early.
+ * Returns a handle for cancelPianoNote(). The note's nodes disconnect themselves once it has ended (B12),
+ * so a long session does not leave thousands of dead nodes around.
  */
 export function playPianoNote(midi, startTime, duration, output = masterGain, oscillators) {
   const frequency = midiToHz(midi);
@@ -60,6 +62,7 @@ export function playPianoNote(midi, startTime, duration, output = masterGain, os
   envelope.gain.linearRampToValueAtTime(0.3, startTime + 0.006);
   envelope.gain.exponentialRampToValueAtTime(0.11, startTime + 0.3);
   envelope.gain.exponentialRampToValueAtTime(0.0005, startTime + duration + 0.6);
+  const handle = { startTime, envelope, oscillators: [], gains: [] };
   [1, 2, 3, 4, 5, 6].forEach((harmonic) => {
     const oscillator = context.createOscillator();
     const harmonicGain = context.createGain();
@@ -69,8 +72,44 @@ export function playPianoNote(midi, startTime, duration, output = masterGain, os
     oscillator.connect(harmonicGain).connect(envelope);
     oscillator.start(startTime);
     oscillator.stop(startTime + duration + 0.7);
+    handle.oscillators.push(oscillator);
+    handle.gains.push(harmonicGain);
     if (oscillators) oscillators.push(oscillator);
   });
+  // When the last harmonic has ended, let go of the whole note.
+  handle.oscillators[5].onended = () => disconnectNote(handle);
+  return handle;
+}
+
+function disconnectNote(handle) {
+  try {
+    handle.oscillators.forEach((oscillator) => oscillator.disconnect());
+    handle.gains.forEach((gain) => gain.disconnect());
+    handle.envelope.disconnect();
+  } catch (error) {
+    // Already disconnected.
+  }
+}
+
+/**
+ * Silence a note from playPianoNote(). A note that has not started yet never plays; one that is sounding
+ * fades out in 30 ms (no click). `now` is the audio clock.
+ */
+export function cancelPianoNote(handle, now) {
+  try {
+    if (handle.startTime > now) {
+      handle.oscillators.forEach((oscillator) => oscillator.stop(now));
+      // An oscillator told to stop before it starts never sounds, and its onended disconnects the whole note.
+      return;
+    }
+    const gain = handle.envelope.gain;
+    gain.cancelScheduledValues(now);
+    gain.setValueAtTime(gain.value, now);
+    gain.linearRampToValueAtTime(0, now + 0.03);
+    handle.oscillators.forEach((oscillator) => oscillator.stop(now + 0.05));
+  } catch (error) {
+    // Already stopped or the context is closed.
+  }
 }
 
 /**

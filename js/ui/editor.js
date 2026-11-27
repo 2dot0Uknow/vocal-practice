@@ -5,7 +5,7 @@ import { $, esc } from './dom.js';
 import { state, saveExercises } from '../state.js';
 import { store, KEYS } from '../store.js';
 import { noteName, toMidi, parsePat, rootsOf, spellingOf, accidentalOf } from '../music.js';
-import { normEx } from '../exercise.js';
+import { normEx, planRounds, placeRound } from '../exercise.js';
 import { parseAll } from '../converter.js';
 import { ensureAudio, getAudioContext, createPreviewBus, playPianoNote } from '../audio.js';
 import { navTo, goHome } from './navigation.js';
@@ -91,15 +91,11 @@ function hearOneRound(exercise) {
   stopPreview();
   const bus = createPreviewBus();
   preview = { gain: bus, oscillators: [] };
-  const secondsPerBeat = 60 / exercise.bpm;
-  const notes = parsePat(exercise.pat);
-  const root = rootsOf(exercise, notes)[0];
-  let time = getAudioContext().currentTime + 0.1;
-  notes.forEach((note) => {
-    const duration = secondsPerBeat * (note.h ? exercise.hold : 1);
-    playPianoNote(root + note.s, time, duration, bus, preview.oscillators);
-    time += duration;
-  });
+  // The same round plan the practice screen uses (B12): round 1, first sound only, starting at the first note (no cue chord).
+  const placed = placeRound(planRounds(exercise).rounds[0], 0);
+  const notes = placed.targets.filter((target) => target.pass === 0);
+  const begin = getAudioContext().currentTime + 0.1 - notes[0].t0;
+  notes.forEach((note) => playPianoNote(note.m, begin + note.t0, note.t1 - note.t0, bus, preview.oscillators));
 }
 
 function renderCards() {

@@ -5,7 +5,6 @@
 //   window.__rec.streams  every microphone stream handed out
 //   window.__rec.gum      {mode: 'ok' | 'reject', name, delay}: how getUserMedia should behave
 const path = require('node:path');
-const { pathToFileURL } = require('node:url');
 const { openApp, sleep } = require('./scenario.cjs');
 
 const INSTRUMENT = `
@@ -76,16 +75,16 @@ async function runSessionChecks(baseUrl) {
       problems.push(`${name}: threw ${error.message}`);
     }
   };
-  const { buildSession, normEx } = await import(pathToFileURL(path.resolve(__dirname, '../../js/exercise.js')).href);
-  const pianoNotes = buildSession(normEx(QUICK), 0).plays.reduce((sum, play) => sum + play.m.length, 0);
-
   // B1: two quick taps on Start make exactly one session.
   await check('double tap', async () => {
     await page.evaluate(() => { const b = document.getElementById('goBtn'); b.click(); b.click(); });
     await sleep(600);
     expect((await rec(() => window.__rec.ctxs.length)) === 1, 'double tap: more than one AudioContext');
     expect((await rec(() => window.__rec.streams.length)) === 1, 'double tap: more than one microphone request');
-    expect((await rec(() => window.__rec.osc)) === pianoNotes * 6, `double tap: expected ${pianoNotes * 6} oscillators, saw ${await rec(() => window.__rec.osc)}`);
+    // B12: the piano is scheduled ~2 s ahead, not all at Start. 600 ms in, that is the first cue chord (3 notes) and at most
+    // the first two notes of round 1 (a note is 6 oscillators): 18 to 30. A second, doubled schedule would give 36 or more.
+    const oscillators = await rec(() => window.__rec.osc);
+    expect(oscillators >= 18 && oscillators <= 30 && oscillators % 6 === 0, `double tap: expected 18 to 30 oscillators (one session, scheduled ahead), saw ${oscillators}`);
     expect((await goLabel()) === 'Stop', 'double tap: button should read Stop');
     await page.click('#backBtn');
   });
@@ -278,7 +277,7 @@ async function runSessionChecks(baseUrl) {
   return { errors: [...errors, ...problems.map((p) => `session check failed: ${p}`)], problems };
 }
 
-module.exports = { runSessionChecks };
+module.exports = { runSessionChecks, INSTRUMENT };
 
 if (require.main === module) {
   const { serve } = require('./serve.cjs');

@@ -47,6 +47,8 @@ node tests/browser/check-app.cjs                  # tour every screen; fails on 
 node tests/browser/session-checks.cjs            # start/stop, double tap, Back, hidden page, mic failure, picture-delay reset (also run by check-app)
 node tests/browser/converter-checks.cjs          # (run by check-app) converter lines, guess notes, Eb spelling, Save/Convert feedback
 node tests/browser/history-checks.cjs            # (run by check-app) schema-1 data migrates to 2, new history fields, rename keeps history
+node tests/browser/flow-checks.cjs               # (run by check-app) Pause / Resume, Again, Skip, skip the last round; which piano notes were scheduled and cancelled
+node tests/browser/perf-checks.cjs               # (check-app --perf) plays a 24-round arpeggio to the end (~2 min): oscillators created vs alive, analyses per second, report delay
 node tests/browser/check-app.cjs --shots out/     # same, and save screenshots into out/
 node tests/browser/compare-old-new.cjs            # same tour on commit 2aaf0bd and on your working tree; fails if anything differs
 node tests/browser/compare-old-new.cjs <commit>   # compare against another baseline commit
@@ -63,7 +65,10 @@ index.html            markup only
 styles.css            all styles (design intent in the comment at the top)
 js/main.js            entry point: loads data, wires the screens together
 js/music.js           note names (sharps, flats or automatic spelling), toMidi / midiToHz / hzToMidi, parsePat (pattern language), rootsOf (round roots)
-js/exercise.js        exercise model (normEx), sample exercises, buildSession (timeline of notes and piano plays), describeExercise
+js/exercise.js        exercise model (normEx), sample exercises, planRounds / placeRound (a round's notes relative to its start, then on the clock), buildSession (the old whole-timeline layout, kept as the reference for tests), describeExercise
+js/run.js             a practice run as rounds placed on the song clock one at a time: Pause (at the round boundary) / Resume / Again / Skip (pure)
+js/scheduler.js       look-ahead piano scheduling (~2 s ahead, every ~25 ms) with cancel for notes that have not sounded (clock and audio calls handed in, so pure)
+js/timeindex.js      binary-search helpers and the frame store: frames and targets are time-ordered, so drawing and scoring touch only their window
 js/converter.js       parseLine / parseAll: coach's text -> exercise
 js/pitch.js           detect: McLeod pitch detection on a window of samples
 js/scoring.js         err, strictAt, activeAt, estimateLag, scoreNotes, summarizeSession (all of the report's numbers and wording)
@@ -79,7 +84,7 @@ js/ui/navigation.js   screen switching and the browser Back button
 js/ui/library.js      library screen: journey stats, exercise list, history
 js/ui/editor.js       add / edit screen, "Hear one round"
 js/ui/photo.js        photo -> text (Tesseract, loaded on demand; needs a connection)
-js/ui/practice.js     practice screen: session loop, mic, readouts
+js/ui/practice.js     practice screen: scheduler tick (places rounds, plays the piano ahead), 20 ms analysis timer, drawing loop, Pause / Again / Skip buttons
 js/ui/roll.js         the pitch roll canvas
 js/ui/report.js       report screen: HTML from summarizeSession(), saves history
 js/ui/theme.js        theme button

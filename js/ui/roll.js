@@ -3,10 +3,12 @@
 
 import { noteName } from '../music.js';
 import { err, activeAt } from '../scoring.js';
+import { firstIndexWhere, targetRange, nearestTargetByStart } from '../timeindex.js';
 
 /**
- * view = {sequence, frames, now, running, voiceLag, spelling}:
- *  - sequence: the built session ({targets})
+ * view = {targets, frames, now, running, voiceLag, spelling}:
+ *  - targets: the notes on the song clock so far, in time order (the run's live targets)
+ *  - frames: the microphone frames, in time order. Only the visible window of frames and targets is touched (B12).
  *  - now: current position on the song clock (seconds)
  *  - spelling: how to spell note names ('b', '#' or 'auto'; see noteName)
  *  - voiceLag: seconds to shift the voice frames back by
@@ -49,9 +51,14 @@ export function createRoll(canvas) {
   }
 
   /** Ease the visible range toward the notes from 2 s ago to 4 s ahead; snap to it when not running. */
-  function fit(sequence, now, running) {
-    const visible = sequence.targets.filter((target) => target.t1 > now - 2 && target.t0 < now + 4);
-    const pitches = (visible.length ? visible : sequence.targets.slice(0, 10)).map((target) => target.m);
+  function fit(targets, now, running) {
+    // Targets are in time order and do not overlap: the ones in view are one contiguous slice.
+    const first = firstIndexWhere(targets, (target) => target.t1 > now - 2);
+    const last = firstIndexWhere(targets, (target) => target.t0 >= now + 4, first);
+    const visible = targets.slice(first, last);
+    // Held between rounds there is nothing in view: keep the range as it is.
+    if (!visible.length && running) return;
+    const pitches = (visible.length ? visible : targets.slice(0, 10)).map((target) => target.m);
     const wantedLow = Math.min(...pitches) - 3;
     const wantedHigh = Math.max(...pitches) + 3;
     lowestPitch += (wantedLow - lowestPitch) * 0.08;
@@ -62,14 +69,14 @@ export function createRoll(canvas) {
     }
   }
 
-  function draw({ sequence, frames, now, running, voiceLag, spelling }) {
-    if (!sequence || !sequence.targets.length) return;
+  function draw({ targets, frames, now, running, voiceLag, spelling }) {
+    if (!targets || !targets.length) return;
     const density = devicePixelRatio || 1;
     const width = canvas.width / density;
     const height = canvas.height / density;
     context.setTransform(density, 0, 0, density, 0, 0);
     context.clearRect(0, 0, width, height);
-    fit(sequence, now, running);
+    fit(targets, now, running);
 
     // Five seconds fit across the screen; "now" sits 30% from the left.
     const pixelsPerSecond = width / 5;
@@ -90,8 +97,10 @@ export function createRoll(canvas) {
     }
 
     // Target notes as rounded blocks, the current one highlighted, with the sound's name above.
-    const active = running ? activeAt(sequence.targets, now) : null;
-    sequence.targets.forEach((target) => {
+    const active = running ? activeAt(targets, now) : null;
+    // Only the notes that can be on screen: from "now" back to the left edge to the right edge.
+    const onScreen = targetRange(targets, now - 0.3 * 5, now + 0.7 * 5);
+    targets.slice(onScreen.start, onScreen.end).forEach((target) => {
       const left = xOf(target.t0);
       const right = xOf(target.t1);
       if (right < 0 || left > width) return;
@@ -109,14 +118,15 @@ export function createRoll(canvas) {
     context.lineWidth = 4;
     context.lineCap = 'round';
     let previousPoint = null;
-    for (const frame of frames) {
+    // Frames are in time order: start at the first one that is recent enough.
+    for (let i = firstIndexWhere(frames, (frame) => frame.t - voiceLag >= now - 1.6); i < frames.length; i++) {
+      const frame = frames[i];
       const frameTime = frame.t - voiceLag;
-      if (frameTime < now - 1.6 || frame.m == null) {
+      if (frame.m == null) {
         previousPoint = null;
         continue;
       }
-      const target = activeAt(sequence.targets, frameTime)
-        || sequence.targets.reduce((a, b) => (Math.abs(b.t0 - frameTime) < Math.abs(a.t0 - frameTime) ? b : a));
+      const target = activeAt(targets, frameTime) || nearestTargetByStart(targets, frameTime);
       const cents = err(frame.m, target.m);
       const point = [xOf(frameTime), yOf(target.m + cents / 100)];
       if (previousPoint) {

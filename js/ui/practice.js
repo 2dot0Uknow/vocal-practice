@@ -5,12 +5,15 @@ import { $, fillRange } from './dom.js';
 import { state } from '../state.js';
 import { store, KEYS } from '../store.js';
 import { noteName, hzToMidi, spellingOf } from '../music.js';
-import { buildSession, describeExercise } from '../exercise.js';
+import { planRounds, describeExercise } from '../exercise.js';
 import { detect } from '../pitch.js';
 import { err, strictAt, estimateLag, activeAt, median, summarizeSession } from '../scoring.js';
+import { createFrameStore, nextTargetAfter } from '../timeindex.js';
+import { createRun } from '../run.js';
+import { createScheduler } from '../scheduler.js';
 import {
   ensureAudio, setPianoVolume, openMic, micInputLatency, outputDelayEstimate, getAudioContext,
-  resetTrillMode, setTrillMode, captureMicSamples, analysisWindow, brightness, playPianoNote, closeAudio,
+  resetTrillMode, setTrillMode, captureMicSamples, analysisWindow, brightness, playPianoNote, cancelPianoNote, closeAudio,
 } from '../audio.js';
 import { navTo, goHome, currentScreen } from './navigation.js';
 import { createSessionMachine, decideEnd, reportTitle, MIC_MESSAGES } from '../session.js';
@@ -20,11 +23,18 @@ import { showReport } from './report.js';
 import { previousRunsOf } from '../history.js';
 
 let currentExercise = null;
-let sequence = null;            // the built session: {targets, plays, end}
-let frames = [];                // one entry per analysis of the microphone
+let run = null;                 // the rounds placed on the song clock so far (run.js); run.targets() is what is drawn and scored
+const frameStore = createFrameStore();   // one entry per analysis of the microphone, in time order
+let scheduler = null;           // hands the piano to the audio layer ~2 s ahead (scheduler.js)
+let analysisTimer = 0;          // setInterval id: pitch analysis every ANALYSIS_MS, independent of drawing
+let latest = { target: null, frame: null, judgedTarget: null };   // what the last analysis saw, for the readouts
+let holdView = null;            // while paused: the song time the roll stays at
+let holdAnalysisUntil = 0;      // while paused: keep listening until the last round's late notes are in (song time)
 const session = createSessionMachine();   // idle -> starting -> running -> stopping -> idle
 let sessionToken = 0;           // changes whenever a session starts or is torn down, so a late mic answer can tell it is stale
 let animationFrame = 0;
+const ANALYSIS_MS = 20;         // pitch analysis rate (~50 per second)
+const PLACE_AHEAD = 4.5;        // seconds ahead that rounds are placed on the clock (the roll shows 4 s ahead)
 const isRunning = () => session.state === 'running';
 
 // Delay between the piano being scheduled and you hearing it (output latency), in seconds.
@@ -48,8 +58,10 @@ function showPictureDelay() {
   $('syncV').textContent = outputLatency == null ? 'auto' : Math.round(outputLatency * 1000) + ' ms';
 }
 
-function drawRoll(now = isRunning() ? songTime() : 0) {
-  roll.draw({ sequence, frames, now, running: isRunning(), voiceLag, spelling: spellingOf(currentExercise) });
+const viewTargets = () => (run ? run.targets() : []);
+
+function drawRoll(now = isRunning() ? (holdView ?? songTime()) : 0) {
+  roll.draw({ targets: viewTargets(), frames: frameStore.frames, now, running: isRunning(), voiceLag, spelling: spellingOf(currentExercise) });
 }
 
 /** Re-read the theme colours and redraw (called after the theme changes). */
@@ -60,12 +72,17 @@ export function refreshRoll() {
 
 /** Put the practice screen back to its idle look for the current exercise. */
 function resetPracticeView() {
-  sequence = buildSession(currentExercise, 0);
-  frames = [];
+  // Idle preview: the first rounds laid out from time 0, as a run would place them.
+  run = createRun(planRounds(currentExercise));
+  run.start(0);
+  run.advance(0, PLACE_AHEAD);
+  frameStore.clear();
+  holdView = null;
   $('goBtn').textContent = 'Start';
   $('goBtn').disabled = false;
-  $('rSyl').textContent = sequence.targets[0]?.syl || '–';
-  roll.fit(sequence, 0, false);
+  updateControls();
+  $('rSyl').textContent = run.targets()[0]?.syl || '–';
+  roll.fit(run.targets(), 0, false);
   drawRoll();
 }
 
@@ -115,24 +132,138 @@ async function startSession() {
   inputLatency = micInputLatency();
   showPictureDelay();
   // Start 0.6 s from now so the first chord is scheduled in good time.
-  const startTime = getAudioContext().currentTime + 0.6;
-  sequence = buildSession(currentExercise, startTime);
-  frames = [];
+  const context = getAudioContext();
+  frameStore.clear();
+  holdView = null;
+  latest = { target: null, frame: null, judgedTarget: null };
   resetTrillMode();
   recentTrillPitches = [];
   lastLagEstimateAt = 0;
-  sequence.plays.forEach((play) => play.m.forEach((midi) => playPianoNote(midi, play.t, play.d)));
+  run = createRun(planRounds(currentExercise));
+  scheduler = createScheduler({
+    now: () => context.currentTime,
+    play: (midi, t, d) => playPianoNote(midi, t, d),
+    cancel: cancelPianoNote,
+    onTick: schedulerTick,
+  });
+  scheduler.add(run.start(context.currentTime + 0.6).plays);
   session.go('running');
   acquireWakeLock();
   $('goBtn').disabled = false;
   $('goBtn').textContent = 'Stop';
+  updateControls();
+  scheduler.tick();
+  scheduler.start();
+  analysisTimer = setInterval(analyse, ANALYSIS_MS);
   loop();
+}
+
+/**
+ * Every ~25 ms (the scheduler's tick): put the rounds that are about to be reached on the clock, begin a
+ * requested pause at the round boundary, and notice when the run is over. Independent of drawing.
+ */
+function schedulerTick() {
+  if (!isRunning()) return;
+  const audioNow = getAudioContext().currentTime;
+  const { placed, held } = run.advance(audioNow, PLACE_AHEAD);
+  placed.forEach((round) => scheduler.add(round.plays));
+  if (held) beginHold();
+  if (run.finishedBy(songTime())) endSession('finished');
+}
+
+/** A pause has just taken effect: no piano, the roll holds still, and listening stops once the last notes are in. */
+function beginHold() {
+  holdView = run.heldAt - outputLatency;
+  holdAnalysisUntil = holdView + 0.3 + voiceLag + 0.15;   // the last note's scoring tail plus the voice lag
+  recentTrillPitches = [];
+  latest = { target: null, frame: null, judgedTarget: null };
+  updateControls();
+}
+
+/** The Pause / Resume button. */
+function pauseOrResume() {
+  if (!isRunning()) return;
+  const audioNow = getAudioContext().currentTime;
+  if (run.phase === 'held') {
+    const { placed } = run.resume(audioNow);
+    if (placed) scheduler.add(placed.plays);
+    holdView = null;
+    recentTrillPitches = [];
+  } else {
+    const { withdrawn } = run.requestPause(audioNow);
+    // Rounds that were already placed after this one are taken back: nothing of them has sounded yet.
+    if (withdrawn.length) scheduler.cancelFrom(withdrawn[0].start);
+  }
+  updateControls();
+}
+
+/** After Again or Skip: silence the piano, forget the frames of the attempt that was thrown away. */
+function cutCurrentRound(discardFrom) {
+  scheduler.cancelAll();
+  // Frames within the voice lag after the round's start still belong to the previous round's last note.
+  frameStore.discardAfter(discardFrom + voiceLag);
+  recentTrillPitches = [];
+  latest = { target: null, frame: null, judgedTarget: null };
+}
+
+/** Again: play this round again from its cue chord, right away. */
+function againRound() {
+  if (!isRunning()) return;
+  const audioNow = getAudioContext().currentTime;
+  const result = run.again(audioNow);
+  if (!result) return;
+  cutCurrentRound(result.discardFrom);
+  scheduler.add(result.placed.plays);
+  updateControls();
+}
+
+/** Skip: leave this round (it is not scored) and go to the next round's cue chord. */
+function skipRound() {
+  if (!isRunning()) return;
+  const audioNow = getAudioContext().currentTime;
+  const result = run.skip(audioNow);
+  if (!result) return;
+  cutCurrentRound(result.discardFrom);
+  if (result.last) {
+    // Skipping the last round ends the run; it is a finished run when any round was sung, otherwise it is just a stop.
+    if (!result.sung) endSession('stopped');
+    return;                  // else the scheduler tick ends it as 'finished' (run.endTime)
+  }
+  if (result.placed) scheduler.add(result.placed.plays);
+  if (result.held) beginHold();
+  updateControls();
+}
+
+let controlsShown = '';   // what the three buttons last showed, so the drawing loop only touches the page when something changes
+
+/** Show or hide Pause / Again / Skip and set their words, from the run's state. */
+function updateControls() {
+  const running = isRunning() && run;
+  const held = running && run.phase === 'held';
+  const pending = running && run.pausePending;
+  const canPause = running && !held && run.canPause(getAudioContext().currentTime);
+  const key = [!!running, !!held, !!pending, !!canPause, running && run.phase === 'done'].join();
+  if (key === controlsShown) return;
+  controlsShown = key;
+  $('pauseBtn').hidden = !running;
+  $('repeatBtn').hidden = !running;
+  $('skipBtn').hidden = !running;
+  $('pauseNote').hidden = !(held || pending);
+  if (!running) return;
+  $('pauseBtn').textContent = held ? 'Resume' : pending ? 'Pausing…' : 'Pause';
+  $('pauseBtn').disabled = !held && !canPause;
+  $('repeatBtn').disabled = held || run.phase === 'done';
+  $('skipBtn').disabled = held || run.phase === 'done';
+  $('pauseNote').textContent = held ? 'Paused. Resume starts the next round with its chord.' : 'Pausing after this round…';
 }
 
 /** Release the piano, the microphone, the wake lock and the animation loop. Does not touch the session state. */
 function teardown() {
   sessionToken++;
   cancelAnimationFrame(animationFrame);
+  clearInterval(analysisTimer);
+  if (scheduler) scheduler.stop();
+  scheduler = null;
   closeAudio();
   releaseWakeLock();
 }
@@ -149,6 +280,8 @@ export function abortSession() {
   if (session.can('idle')) session.go('idle');
   $('goBtn').textContent = 'Start';
   $('goBtn').disabled = false;
+  holdView = null;
+  updateControls();
 }
 
 /**
@@ -160,8 +293,8 @@ function endSession(reason) {
   const wasRunning = isRunning();
   const exercise = currentExercise;
   const endedAt = wasRunning ? songTime() : null;   // read the clock before the audio is closed
-  const { targets } = sequence;
-  const recorded = frames;
+  const targets = run.targets();     // the last attempt of every round that was not skipped
+  const recorded = frameStore.frames;
   abortSession();
   if (!wasRunning) return;                          // still waiting for the mic: nothing was sung
   const decision = decideEnd({ reason, songTime: endedAt, targets, voiceLag });
@@ -182,12 +315,20 @@ function endSession(reason) {
   showReport(exercise, summary, { title: reportTitle(exercise.name, decision), save: decision.save });
 }
 
-/** One animation frame: listen, detect the pitch, update the readouts and the roll. */
-function loop() {
+/**
+ * One pitch analysis (every ~20 ms, on its own timer so it keeps its pace whatever the screen is doing):
+ * listen, detect the pitch, record a frame, nudge the voice lag. Drawing happens separately in loop().
+ */
+function analyse() {
   if (!isRunning()) return;
-  captureMicSamples();
   const now = songTime();
-  const target = activeAt(sequence.targets, now) || sequence.targets.find((x) => x.t0 > now);
+  const held = run.phase === 'held';
+  // Paused: the last round's late notes are still being collected for a moment, then listening stops.
+  if (held && now > holdAnalysisUntil) return;
+  if (run.phase === 'done') return;
+  const targets = run.targets();
+  captureMicSamples();
+  const target = activeAt(targets, now) || nextTargetAfter(targets, now);
   const trill = !!(target && target.trill);
   setTrillMode(trill);
   const { samples, sampleRate } = analysisWindow(trill);
@@ -209,21 +350,29 @@ function loop() {
   } else {
     recentTrillPitches = [];
   }
-  frames.push(frame);
+  frameStore.add(frame);
 
   // Every 1.5 s, nudge the voice lag toward what the last 8 s of singing suggests.
   if (now - lastLagEstimateAt > 1.5) {
     lastLagEstimateAt = now;
-    const estimate = estimateLag(frames.filter((f) => f.t > now - 8), sequence.targets);
+    const estimate = estimateLag(frameStore.since(now - 8), targets);
     if (estimate != null) voiceLag = voiceLag + (estimate - voiceLag) * 0.5;
   }
 
   // The note the voice is judged against: the one sounding when it was sung (after lag), else the current one.
-  const judgedTarget = frame.m != null ? (strictAt(sequence.targets, frame.t - voiceLag) || target) : target;
-  $('rTarget').textContent = target ? noteName(target.m, spellingOf(currentExercise)) : '–';
+  const judgedTarget = frame.m != null ? (strictAt(targets, frame.t - voiceLag) || target) : target;
+  latest = { target, frame, judgedTarget };
+}
+
+/** One animation frame: update the readouts from the latest analysis and draw the roll. */
+function loop() {
+  if (!isRunning()) return;
+  const { target, frame, judgedTarget } = latest;
+  const spelling = spellingOf(currentExercise);
+  $('rTarget').textContent = target ? noteName(target.m, spelling) : '–';
   $('rSyl').textContent = target && target.syl ? target.syl : '–';
-  if (frame.m != null) {
-    $('rNote').textContent = noteName(frame.m, spellingOf(currentExercise));
+  if (frame && frame.m != null) {
+    $('rNote').textContent = noteName(frame.m, spelling);
     if (judgedTarget) {
       const cents = err(frame.m, judgedTarget.m);
       $('rCents').textContent = (cents > 0 ? '+' : '') + Math.round(cents) + ' cents';
@@ -231,11 +380,8 @@ function loop() {
       $('needle').style.left = `calc(${50 + Math.max(-50, Math.min(50, cents / 2))}% - 2px)`;
     }
   }
-  drawRoll(now);
-  if (now > sequence.end) {
-    endSession('finished');
-    return;
-  }
+  updateControls();
+  drawRoll();
   animationFrame = requestAnimationFrame(loop);
 }
 
@@ -263,6 +409,9 @@ export function initPractice() {
   };
 
   $('goBtn').onclick = () => (isRunning() ? endSession('stopped') : startSession());
+  $('pauseBtn').onclick = pauseOrResume;
+  $('repeatBtn').onclick = againRound;
+  $('skipBtn').onclick = skipRound;
   $('micRetry').onclick = startSession;
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') {
