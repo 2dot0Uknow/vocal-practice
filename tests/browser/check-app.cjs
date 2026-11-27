@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { runScenario } = require('./scenario.cjs');
 const { serve } = require('./serve.cjs');
+const { runSessionChecks } = require('./session-checks.cjs');
 
 (async () => {
   const args = process.argv.slice(2);
@@ -19,6 +20,11 @@ const { serve } = require('./serve.cjs');
   }
   const shots = shotsDir ? (name, page) => page.screenshot({ path: path.join(shotsDir, name + '.png') }) : undefined;
   const { errors, observations } = await runScenario(baseUrl, { shots });
+  // PR 2: start / stop / visibility / mic-failure behaviour (skip with --no-session).
+  if (!args.includes('--no-session')) {
+    const session = await runSessionChecks(baseUrl);
+    errors.push(...session.errors);
+  }
   if (server) server.stop();
   console.log(JSON.stringify({ visited: observations.visitedScreens, errors }, null, 2));
   process.exit(errors.length ? 1 : 0);
