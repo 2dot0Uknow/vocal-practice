@@ -34,7 +34,8 @@ for (const entry of fixture.report) {
     assert.equal(statRowsHTML(summary.rows), nodes.stats.innerHTML);
     assert.equal(listItemsHTML(summary.tips), nodes.tips.innerHTML);
     assert.equal(listItemsHTML(summary.good), nodes.good.innerHTML);
-    assert.equal(noteStripsHTML(summary.results, exercise), nodes.notesOut.innerHTML);
+    // B7: the original app only spelled sharps, so the pinned cells are rendered with spell '#' (exercises now default to auto).
+    assert.equal(noteStripsHTML(summary.results, { ...exercise, spell: '#' }), nodes.notesOut.innerHTML);
     assert.equal(!summary.hasTrillNotes, nodes.trNote.hidden);
     assertSame(summary.voiceLag, entry.voiceLagOut, 'voice lag');
     assert.equal(summary.saveable, entry.savedEntry !== null);
@@ -97,4 +98,19 @@ test('activeAt allows 0.15 s of grace after a note ends', () => {
 test('describeExercise matches the library text', () => {
   assert.equal(describeExercise(normEx({ pat: '1-3-5~', vows: ['ah', 'oo'], rootVow: 'ee', start: 48, end: 55, top: true, bpm: 100 })), '1 3 5~ · ah / oo (root: ee) · C3–G3 range · 100 bpm');
   assert.equal(describeExercise(normEx({ pat: '1-3-5~', start: 48, end: 55 })), '1 3 5~ · C3–G3 · 90 bpm');
+});
+
+test('B7: describeExercise uses the exercise spelling (auto: Eb, F#; saved: as written)', () => {
+  const base = { pat: '1-3-5~', start: 51, end: 54 };
+  assert.equal(describeExercise(normEx(base)), '1 3 5~ · Eb3–F#3 · 90 bpm');
+  assert.equal(describeExercise(normEx({ ...base, spell: '#' })), '1 3 5~ · D#3–F#3 · 90 bpm');
+  assert.equal(describeExercise(normEx({ ...base, spell: 'b' })), '1 3 5~ · Eb3–Gb3 · 90 bpm');
+});
+
+test('B7: report note cells follow the exercise spelling', () => {
+  const results = [{ round: 0, pass: 0, m: 51, med: 3, miss: false }, { round: 0, pass: 0, m: 54, med: -4, miss: false }];
+  const names = (exercise) => [...noteStripsHTML(results, exercise).matchAll(/<b>([^<]+)<\/b>/g)].map((m) => m[1]);
+  assert.deepEqual(names(normEx({ pat: '1-3', start: 48, end: 50 })), ['Eb3', 'F#3'], 'auto');
+  assert.deepEqual(names(normEx({ pat: '1-3', start: 48, end: 50, spell: 'b' })), ['Eb3', 'Gb3']);
+  assert.deepEqual(names(normEx({ pat: '1-3', start: 48, end: 50, spell: '#' })), ['D#3', 'F#3']);
 });

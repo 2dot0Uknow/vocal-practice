@@ -37,3 +37,12 @@ test('the built-in sample exercises are unchanged from the original', () => {
   assertSame(SAMPLES, fixture.samples);
   assert.deepEqual(SAMPLES.map((s) => s.id), ['s1', 's2', 's3']);
 });
+
+test('B7: normEx keeps an optional spell field only when it is b or #', () => {
+  const base = { pat: '1-3-5', start: 48, end: 55 };
+  assert.equal('spell' in normEx(base), false, 'old data without it is unchanged');
+  assert.equal(normEx({ ...base, spell: 'b' }).spell, 'b');
+  assert.equal(normEx({ ...base, spell: '#' }).spell, '#');
+  assert.equal('spell' in normEx({ ...base, spell: '' }), false);
+  assert.equal('spell' in normEx({ ...base, spell: 'x' }), false);
+});

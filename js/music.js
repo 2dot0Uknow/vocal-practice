@@ -9,11 +9,40 @@ const MAJOR_SCALE_SEMITONES = [0, 2, 4, 5, 7, 9, 11];
 // A single exercise never runs for more than this many rounds.
 export const MAX_ROUNDS = 48;
 
-/** MIDI number -> "C4" style name. Sharps only (flat spelling is a later change). */
-export function noteName(midi) {
+// Flat spellings, for exercises written with flats.
+const FLAT_NAMES = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
+
+// Pitch classes spelled as flats when nothing is known about how the exercise was written:
+// Db, Eb, Ab, Bb (but F#, not Gb).
+const AUTO_FLAT = new Set([1, 3, 8, 10]);
+
+/**
+ * MIDI number -> "C4" style name. `spelling` picks the accidentals:
+ *  - 'b' (or true): flats everywhere (Gb, Db, ...)
+ *  - 'auto': Db, Eb, Ab, Bb and F# (what an exercise shows when it has no saved spelling)
+ *  - anything else, including nothing: sharps everywhere (C#, D#, F#, G#, A#)
+ */
+export function noteName(midi, spelling) {
   const rounded = Math.round(midi);
   const octave = Math.floor(rounded / 12) - 1;
-  return NOTE_NAMES[((rounded % 12) + 12) % 12] + octave;
+  const pitchClass = ((rounded % 12) + 12) % 12;
+  const flat = spelling === 'b' || spelling === true || (spelling === 'auto' && AUTO_FLAT.has(pitchClass));
+  return (flat ? FLAT_NAMES : NOTE_NAMES)[pitchClass] + octave;
+}
+
+/** The spelling an exercise shows its notes in: its saved `spell` ('b' or '#'), else 'auto'. */
+export const spellingOf = (exercise) => (exercise && (exercise.spell === 'b' || exercise.spell === '#') ? exercise.spell : 'auto');
+
+/** A single typed note name ("eb4", "F#3") -> 'b', '#', or '' when it has no accidental. */
+export function accidentalOf(note) {
+  const match = /^\s*[A-Ga-g]\s*([#b])\s*\d\s*$/.exec(String(note || ''));
+  return match ? match[1] : '';
+}
+
+/** The accidental typed in note names inside `text` ("Eb5" -> 'b', "F#3" -> '#'), or '' when none was typed. */
+export function typedSpelling(text) {
+  const match = /(?:^|[^A-Za-z])[A-G]\s?([#b])\s?\d/.exec(String(text || '').replace(/♭/g, 'b').replace(/♯/g, '#'));
+  return match ? (match[1] == 'b' ? 'b' : '#') : '';
 }
 
 /** "Eb5" / "c#3" -> MIDI number, or null if it is not a note name. */

@@ -1,6 +1,6 @@
 // The exercise model and the timeline built from it.
 
-import { parsePat, rootsOf, noteName } from './music.js';
+import { parsePat, rootsOf, noteName, spellingOf } from './music.js';
 
 /** Fill in defaults so every exercise (saved, sample or converted) has the same shape. */
 export const normEx = (exercise) => ({
@@ -16,6 +16,8 @@ export const normEx = (exercise) => ({
   step: exercise.step || 1,
   bpm: exercise.bpm || 90,
   hold: exercise.hold || 2,
+  // Optional: how the notes were written ('b' flats, '#' sharps). Absent = automatic spelling.
+  ...(exercise.spell == 'b' || exercise.spell == '#' ? { spell: exercise.spell } : {}),
 });
 
 /** Shown the very first time, before anything has been saved. */
@@ -67,4 +69,4 @@ export function buildSession(exercise, startTime) {
 }
 
 /** The one-line description under an exercise's name, e.g. "1 3 5 · ah · C3–G3 · 90 bpm". */
-export const describeExercise = (exercise) => `${exercise.pat.replace(/-/g, ' ')}${exercise.vows.length ? ' · ' + exercise.vows.join(' / ') : ''}${exercise.rootVow ? ' (root: ' + exercise.rootVow + ')' : ''} · ${noteName(exercise.start)}–${noteName(exercise.end)}${exercise.top ? ' range' : ''} · ${exercise.bpm} bpm`;
+export const describeExercise = (exercise) => `${exercise.pat.replace(/-/g, ' ')}${exercise.vows.length ? ' · ' + exercise.vows.join(' / ') : ''}${exercise.rootVow ? ' (root: ' + exercise.rootVow + ')' : ''} · ${noteName(exercise.start, spellingOf(exercise))}–${noteName(exercise.end, spellingOf(exercise))}${exercise.top ? ' range' : ''} · ${exercise.bpm} bpm`;

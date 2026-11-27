@@ -3,7 +3,7 @@
 
 import { $, esc } from './dom.js';
 import { navTo } from './navigation.js';
-import { noteName } from '../music.js';
+import { noteName, spellingOf } from '../music.js';
 import { store, KEYS } from '../store.js';
 import { state } from '../state.js';
 
@@ -24,7 +24,7 @@ export function noteStripsHTML(results, exercise) {
   return Object.values(groups).map((strip) => `<div class="strip"><span class="rl">Round ${strip[0].round + 1}${exercise.vows.length > 1 ? ' · ' + esc(exercise.vows[strip[0].pass]) : ''}</span>${strip.map((result) => {
     const cents = result.miss ? null : Math.abs(result.med);
     const background = result.miss ? '' : cents <= 25 ? 'var(--on)' : cents <= 50 ? 'var(--near)' : 'var(--far)';
-    return `<div class="cell${result.miss ? ' miss' : ''}" style="${background ? 'background:' + background : ''}"><b>${noteName(result.m)}</b>${result.miss ? '—' : (result.med > 0 ? '+' : '') + Math.round(result.med)}</div>`;
+    return `<div class="cell${result.miss ? ' miss' : ''}" style="${background ? 'background:' + background : ''}"><b>${noteName(result.m, spellingOf(exercise))}</b>${result.miss ? '—' : (result.med > 0 ? '+' : '') + Math.round(result.med)}</div>`;
   }).join('')}</div>`).join('');
 }
 
