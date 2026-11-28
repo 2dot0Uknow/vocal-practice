@@ -29,6 +29,20 @@ test('there are enough captured report scenarios', () => {
 // two tone tips are expected to differ. Everything else is still compared exactly.
 const TONE_ROW = /(<span>(?:Clear tone|Ring)<\/span><span class="b">.*?<\/span><span>)[^<]*(<\/span>)/g;
 const withoutToneWords = (html) => html.replace(TONE_ROW, '$1…$2');
+
+// V6: the stat bars no longer carry an inline style; the level is a class and the width is in data-w. The pinned (original)
+// HTML is translated to that form so everything else in it is still compared exactly.
+const LEVEL = { 'var(--on)': 'lv-on', 'var(--near)': 'lv-near', 'var(--far)': 'lv-far' };
+const barsAsClasses = (html) => html.replace(/<i style="width:(\d+)%;background:(var\(--\w+\))"><\/i>/g, (all, width, colour) => `<i class="${LEVEL[colour]}" data-w="${width}"></i>`);
+// V2: the note cells gained a role, an aria-label, a colour class (instead of an inline style) and a tick / arrow mark. What is
+// compared is what they always showed: the note name and the cents text (or 8vb / 8va / a dash), in the same order, with the
+// same colour level.
+const cellsOf = (html) => [...html.matchAll(/<div class="cell([^"]*)"[^>]*><b>([^<]+)<\/b>(.*?)<\/div>/g)].map(([, classes, name, rest]) => {
+  const shown = rest.replace(/<span class="cue">[^<]*<\/span> /, '');
+  const colour = /miss/.test(classes) ? 'miss' : /\bon\b/.test(classes) ? 'on' : /near/.test(classes) ? 'near' : /far/.test(classes) ? 'far' : '';
+  return [name, shown, colour];
+});
+const pinnedCells = (html) => [...html.matchAll(/<div class="cell( miss)?" style="(?:background:var\(--(\w+)\))?"><b>([^<]+)<\/b>(.*?)<\/div>/g)].map(([, miss, level, name, shown]) => [name, shown, miss ? 'miss' : level]);
 const TONE_TIP = /airy side|warm and soft/;
 const tipsOf = (html) => [...html.matchAll(/<li>(.*?)<\/li>/g)].map((match) => match[1]);
 
@@ -41,7 +55,7 @@ for (const entry of fixture.report) {
     assert.equal(summary.pct + '%', nodes.sPct.textContent);
     assert.equal(summary.subtitle, nodes.sSub.textContent);
     assert.equal(summary.cheer, nodes.cheer.textContent);
-    assert.equal(withoutToneWords(statRowsHTML(summary.rows)), withoutToneWords(nodes.stats.innerHTML));
+    assert.equal(withoutToneWords(statRowsHTML(summary.rows)), withoutToneWords(barsAsClasses(nodes.stats.innerHTML)));
     // A3 (no baseline here): no tone tips. The other tips are the pinned ones in the same order; where a pinned tone tip
     // had pushed another tip out of the two shown, only the first tip is compared.
     const pinnedTips = tipsOf(nodes.tips.innerHTML);
@@ -52,7 +66,9 @@ for (const entry of fixture.report) {
     else if (pinnedOther.length) assert.equal(actualTips[0], pinnedOther[0]);
     assert.equal(listItemsHTML(summary.good), nodes.good.innerHTML);
     // B7: the original app only spelled sharps, so the pinned cells are rendered with spell '#' (exercises now default to auto).
-    assert.equal(noteStripsHTML(summary.results, { ...exercise, spell: '#' }), nodes.notesOut.innerHTML);
+    const cells = cellsOf(noteStripsHTML(summary.results, { ...exercise, spell: '#' }));
+    assert.ok(cells.length > 0);
+    assert.deepEqual(cells, pinnedCells(nodes.notesOut.innerHTML));
     assert.equal(!summary.hasTrillNotes, nodes.trNote.hidden);
     assertSame(summary.voiceLag, entry.voiceLagOut, 'voice lag');
     assert.equal(summary.saveable, entry.savedEntry !== null);

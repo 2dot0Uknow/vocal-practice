@@ -11,6 +11,7 @@ const { runHistoryChecks } = require('./history-checks.cjs');
 const { runFlowChecks } = require('./flow-checks.cjs');
 const { runScoringChecks } = require('./scoring-checks.cjs');
 const { runPolishChecks } = require('./polish-checks.cjs');
+const { runA11yChecks } = require('./a11y-checks.cjs');
 const { runPerfChecks } = require('./perf-checks.cjs');
 
 (async () => {
@@ -55,6 +56,11 @@ const { runPerfChecks } = require('./perf-checks.cjs');
   if (!args.includes('--no-polish')) {
     const polish = await runPolishChecks(baseUrl, { shotsDir });
     errors.push(...polish.errors);
+  }
+  // PR 8: accessibility audit on every screen in both themes, plus the visual-polish behaviours (skip with --no-a11y).
+  if (!args.includes('--no-a11y')) {
+    const a11y = await runA11yChecks(baseUrl, { shotsDir });
+    errors.push(...a11y.errors);
   }
   // PR 5: the two-minute 24-round performance run (only with --perf; also runnable alone: node tests/browser/perf-checks.cjs).
   if (args.includes('--perf')) {

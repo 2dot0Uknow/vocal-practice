@@ -31,7 +31,7 @@ function steadyToneFile() {
   return file;
 }
 
-async function openApp(baseUrl, { colorScheme = 'light', initScript = null, steadyTone = false, samples = false, viewport = null } = {}) {
+async function openApp(baseUrl, { colorScheme = 'light', initScript = null, steadyTone = false, samples = false, viewport = null, reducedMotion = 'reduce' } = {}) {
   const args = steadyTone ? [...CHROME_ARGS, `--use-file-for-fake-audio-capture=${steadyToneFile()}`] : CHROME_ARGS;
   const browser = await chromium.launch({ executablePath: '/usr/bin/google-chrome', args });
   const context = await browser.newContext({
@@ -39,7 +39,7 @@ async function openApp(baseUrl, { colorScheme = 'light', initScript = null, stea
     deviceScaleFactor: 1,
     colorScheme,
     permissions: ['microphone'],
-    reducedMotion: 'reduce',
+    reducedMotion,
   });
   const errors = [];
   if (initScript) await context.addInitScript(initScript);
