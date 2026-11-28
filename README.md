@@ -52,6 +52,7 @@ node tests/browser/polish-checks.cjs         # (run by check-app) recorded piano
 node tests/browser/polish-checks.cjs --shots out/   # same, and screenshots of library, practice and report in light and dark
 node tests/browser/flow-checks.cjs               # (run by check-app) Pause / Resume, Again, Skip, skip the last round; which piano notes were scheduled and cancelled
 node tests/browser/perf-checks.cjs               # (check-app --perf) plays a 24-round arpeggio to the end (~2 min): oscillators created vs alive, analyses per second, report delay
+node tests/browser/a11y-checks.cjs [--shots out/]  # (run by check-app) accessibility audit of every screen in both themes (names, ids, headings, focus, contrast >= 4.5), plus cell cues, labels, roll labels / glow, theme-color, favicon, no inline styles, fades and the percent count-up
 node tests/browser/check-app.cjs --shots out/     # same, and save screenshots into out/
 node tests/browser/compare-old-new.cjs            # same tour on commit 2aaf0bd and on your working tree; fails if anything differs
 node tests/browser/compare-old-new.cjs <commit>   # compare against another baseline commit
@@ -95,11 +96,12 @@ js/ui/library.js      library screen: journey stats, exercise list, history
 js/ui/editor.js       add / edit screen, "Hear one round"
 js/ui/photo.js        photo -> text (Tesseract, loaded on demand; needs a connection)
 js/ui/practice.js     practice screen: scheduler tick (places rounds, plays the piano ahead), 20 ms analysis timer, drawing loop, Pause / Again / Skip buttons
-js/ui/roll.js         the pitch roll canvas
+js/ui/roll.js         the pitch roll canvas (round labels, held-in-tune glow; fonts and sizes from the --roll-* CSS properties)
 js/ui/report.js       report screen: HTML from summarizeSession(), saves history
 js/ui/toast.js        the bottom message with Undo
 js/ui/theme.js        theme button (shows Auto / Light / Dark)
-tests/                node --test files; helpers/ (synthetic signals), fixtures/, tools/ (generator), browser/ (Playwright)
+favicon.svg / .png    the sun mark (tools/make-favicon.cjs made the PNG once with sharp; it is committed, nothing builds it)
+tests/                node --test files (contrast.test.js measures every text / fill pair from styles.css); helpers/ (synthetic signals), fixtures/, tools/ (generator), browser/ (Playwright)
 ```
 
 Everything outside `js/ui/`, `js/audio.js`, `js/wakelock.js`, `js/main.js` and `js/state.js` is pure (no DOM, no audio, no storage)
