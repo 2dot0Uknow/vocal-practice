@@ -1,0 +1,10 @@
+Piano samples in this folder
+
+Source: Salamander Grand Piano V3 (a Yamaha C5), recorded and published by Alexander Holm.
+Licence: Creative Commons Attribution 3.0 (CC BY 3.0), http://creativecommons.org/licenses/by/3.0/
+
+Changes made for this app: one note kept per minor third from C2 to C6 (17 files), downmixed to mono,
+trimmed to 2.8 seconds with a 0.4 second fade-out, loudness matched, converted to 64 kbps MP3.
+The exact steps are in tools/make-piano-samples.sh. The original recordings are not part of this repository.
+
+Credit: Piano: Salamander Grand Piano by Alexander Holm, CC BY 3.0, trimmed and converted to mono.
