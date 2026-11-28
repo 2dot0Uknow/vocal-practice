@@ -51,6 +51,7 @@
     <div class="meter"><i id="needle"></i></div>
     <div class="fig"><canvas id="cv"></canvas></div>
     <div id="micCard" class="card warn" role="alert" hidden><p id="micCardMsg" style="margin:0 0 10px"></p><button id="micRetry">Try again</button></div>
+    <div id="leakCard" class="card" role="status" hidden><p style="margin:0 0 10px">I can hear the piano through the mic. Headphones will make your scores fair.</p><button class="ghost" id="leakDismiss">Got it</button></div>
     <div class="row" style="margin-top:12px"><button class="pri" id="goBtn">Start</button><button id="pauseBtn" hidden>Pause</button><button id="repeatBtn" hidden>Again</button><button id="skipBtn" hidden>Skip</button><button class="ghost" id="backBtn">Back</button></div>
     <p class="note" id="pauseNote" role="status" hidden></p>
     <label for="vol">Piano volume</label><input id="vol" type="range" min="0" max="1" step="0.05" value="0.6" style="padding:0">
@@ -70,7 +71,9 @@
     <div class="card"><b>To try next time</b><ul class="tips" id="tips"></ul></div>
     <div class="card"><b>Note by note</b><p class="note">How close each note landed, in cents (100 = a half step). Green is within 25, gold within 50, lavender is still finding it.</p><div id="notesOut"></div></div>
     <p class="note" id="trNote" hidden>Lip-trill notes are scored on pitch only, since the buzz makes tone readings unreliable.</p>
-    <p class="note">Tone readings are estimates from the sound and vary with the vowel, mic and room. Use them to spot trends, not as a verdict.</p>
+    <p class="note" id="leakNote" role="status" hidden></p>
+    <p class="note" id="debugRow" hidden><a id="debugLink" href="#">Download session data</a></p>
+    <p class="note" id="toneNote">Tone readings are estimates from the sound and vary with the vowel, mic and room. Use them to spot trends, not as a verdict.</p>
     <div class="row"><button class="pri" id="nextBtn" hidden>Next exercise</button><button id="againBtn">Go again</button><button class="ghost" data-go="lib">Done</button></div>
   </section>
 </div>
