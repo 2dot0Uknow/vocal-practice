@@ -4,7 +4,9 @@ name: Version bump
 # This fails a change that touches a cached app file or sw.js without bumping it.
 
 on:
+  # Only pushes to main go live on GitHub Pages. Work-in-progress branches are checked as a whole by their pull request.
   push:
+    branches: [main]
   pull_request:
 
 jobs:
