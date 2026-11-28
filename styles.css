@@ -4,6 +4,24 @@
    COLOUR and TYPE: warm white, deep-blue ink, confident sky blue, sunrise gold; green = landed, gold = close, lavender = exploring. Nunito + Inter
    LAYOUT: one phone column; journey card on top, roll in the middle, controls below */
 
+/* P3: the two fonts are served from this site (fonts/, SIL Open Font License, see fonts/OFL-*.txt), so they work offline.
+   Variable fonts trimmed to the weights used and to Latin. Until they arrive, or if they cannot load, the system font shows (display=swap). */
+@font-face {
+  font-family: Nunito;
+  font-style: normal;
+  font-weight: 700 800;
+  font-display: swap;
+  src: url("fonts/nunito.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: Inter;
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: url("fonts/inter.woff2") format("woff2");
+}
+
 :root {
   color-scheme: light dark;
   /* V8: plain light values first, for browsers without light-dark(); the block below swaps in the two-theme values. */
@@ -958,4 +976,40 @@ label.btn {
 ::placeholder {
   color: var(--muted);
   opacity: 1;
+}
+
+/* P2 / P5: "Update ready" toast, the quiet "Your data" section and the version line */
+.toast.update {
+  padding: var(--s2);
+}
+
+/* While the update toast is up, the page leaves room under the last section and the Undo toast sits above it. */
+body.has-update .wrap {
+  padding-bottom: 96px;
+}
+
+body.has-update .toast:not(.update) {
+  bottom: calc(76px + env(safe-area-inset-bottom));
+}
+
+.toast.update button {
+  flex: 1;
+}
+
+.data {
+  margin-top: var(--s6);
+  padding-top: var(--s4);
+  border-top: 1px solid var(--line);
+}
+
+.data-title {
+  margin: 0;
+  font-size: 16px;
+}
+
+.version {
+  margin: var(--s4) 0 0;
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
 }

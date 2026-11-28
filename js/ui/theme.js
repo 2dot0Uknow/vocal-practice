@@ -29,6 +29,13 @@ function applyTheme() {
   $('themeBtn').setAttribute('aria-label', `Theme: ${label}${theme ? '' : ' (matches your phone)'}. Tap to change`);
 }
 
+/** After a backup is restored (P5): read the saved theme again and show it. */
+export function reloadTheme() {
+  theme = store.get(KEYS.theme, '');
+  applyTheme();
+  onChange();
+}
+
 /** `changed` runs after the theme is switched by the button (the pitch roll re-reads its colours). */
 export function initTheme(changed) {
   onChange = changed;

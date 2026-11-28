@@ -9,6 +9,7 @@ function loadTesseract() {
   tesseractLoading = new Promise((resolve, reject) => {
     const script = document.createElement('script');
     script.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+    script.crossOrigin = 'anonymous';   // P4: lets the browser check an integrity hash once one is added (see README, "Follow-up: Tesseract integrity hash")
     script.onload = resolve;
     script.onerror = () => {
       tesseractLoading = null;

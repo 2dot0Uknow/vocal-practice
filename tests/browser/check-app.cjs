@@ -13,6 +13,7 @@ const { runScoringChecks } = require('./scoring-checks.cjs');
 const { runPolishChecks } = require('./polish-checks.cjs');
 const { runA11yChecks } = require('./a11y-checks.cjs');
 const { runPerfChecks } = require('./perf-checks.cjs');
+const { runOfflineChecks } = require('./offline-checks.cjs');
 
 (async () => {
   const args = process.argv.slice(2);
@@ -61,6 +62,11 @@ const { runPerfChecks } = require('./perf-checks.cjs');
   if (!args.includes('--no-a11y')) {
     const a11y = await runA11yChecks(baseUrl, { shotsDir });
     errors.push(...a11y.errors);
+  }
+  // PR 9: service worker, offline session, update toast, installability, export / import, failed saves (skip with --no-offline).
+  if (!args.includes('--no-offline')) {
+    const offline = await runOfflineChecks(baseUrl, { shotsDir });
+    errors.push(...offline.errors);
   }
   // PR 5: the two-minute 24-round performance run (only with --perf; also runnable alone: node tests/browser/perf-checks.cjs).
   if (args.includes('--perf')) {

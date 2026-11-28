@@ -1,7 +1,7 @@
 // The library screen: journey stats, exercise list, history.
 
 import { $, esc } from './dom.js';
-import { state, saveExercises, startSet, endSet, DEFAULT_RANGE } from '../state.js';
+import { state, saveExercises, startSet, endSet, DEFAULT_RANGE, SAVE_FAILED_MESSAGE } from '../state.js';
 import { store, KEYS } from '../store.js';
 import { describeExercise, SAMPLES } from '../exercise.js';
 import { noteName } from '../music.js';
@@ -9,6 +9,7 @@ import { moveExercise, shouldOnboard, readComfortableRange, rebaseSamples } from
 import { entryLabel } from '../history.js';
 import { openPractice } from './practice.js';
 import { openEditor } from './editor.js';
+import { APP_VERSION } from '../version.js';
 
 const EDIT_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19.5 8.5a2.1 2.1 0 0 0-3-3L5 17z"/><path d="M14.5 7.5l3 3"/></svg>';
 const PLAY_ICON = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z" fill="currentColor"/></svg>';
@@ -60,8 +61,15 @@ function moveInList(index, delta) {
   const moved = moveExercise(state.exercises, index, delta);
   if (moved === state.exercises) return;
   const name = state.exercises[index].name;
+  const before = state.exercises;
   state.exercises = moved;
-  saveExercises();
+  if (!saveExercises()) {   // P6: put the visible order back
+    state.exercises = before;
+    renderLibrary();
+    $('reorderNote').textContent = SAVE_FAILED_MESSAGE;
+    $('reorderNote').hidden = false;
+    return;
+  }
   renderLibrary();
   const newIndex = index + delta;
   const wanted = delta < 0 ? 'up' : 'down';
@@ -134,10 +142,16 @@ function saveOnboarding() {
     $(range.field == 'low' ? 'obLow' : 'obHigh').focus();
     return;
   }
+  const before = { range: state.defaultRange, exercises: state.exercises };
   state.defaultRange = { start: range.low, end: range.high };
-  store.set(KEYS.defaultRange, state.defaultRange);
   state.exercises = rebaseSamples(SAMPLES, range.low, range.high);
-  saveExercises();
+  if (!store.set(KEYS.defaultRange, state.defaultRange) || !saveExercises()) {   // P6: the card stays so they can try again
+    state.defaultRange = before.range;
+    state.exercises = before.exercises;
+    $('obMsg').textContent = SAVE_FAILED_MESSAGE;
+    $('obMsg').hidden = false;
+    return;
+  }
   store.set(KEYS.onboarded, 1);
   renderLibrary();
 }
@@ -148,6 +162,7 @@ function dismissOnboarding() {
 }
 
 export function initLibrary() {
+  $('appVersion').textContent = `v${APP_VERSION}`;
   $('obSave').onclick = saveOnboarding;
   $('obSkip').onclick = dismissOnboarding;
   ['obLow', 'obHigh'].forEach((id) => $(id).addEventListener('input', () => {

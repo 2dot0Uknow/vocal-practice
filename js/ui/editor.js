@@ -2,7 +2,7 @@
 // Also "Hear one round", a quick piano preview of an exercise.
 
 import { $, esc } from './dom.js';
-import { state, saveExercises } from '../state.js';
+import { state, saveExercises, SAVE_FAILED_MESSAGE } from '../state.js';
 import { duplicateExercise, removeExercise, restoreExercise } from '../library-ops.js';
 import { showToast } from './toast.js';
 import { store, KEYS } from '../store.js';
@@ -173,13 +173,19 @@ function renderCards() {
 function deleteSaved(id) {
   const { list, removed } = removeExercise(state.exercises, id);
   if (!removed) return;
+  const before = state.exercises;
   state.exercises = list;
-  saveExercises();
+  if (!saveExercises()) {   // P6: stay here, nothing deleted
+    state.exercises = before;
+    showMessage('saveMsg', SAVE_FAILED_MESSAGE);
+    return;
+  }
   goHome();
   showToast(`Deleted “${removed.exercise.name}”.`, {
     onUndo: () => {
+      const kept = state.exercises;
       state.exercises = restoreExercise(state.exercises, removed);
-      saveExercises();
+      if (!saveExercises()) state.exercises = kept;   // the toast already told the person once
       refreshLibrary();
     },
   });
@@ -198,8 +204,13 @@ function duplicateCard(card) {
   const { list, copy } = duplicateExercise(state.exercises, exercise.id, newId);
   // The copy takes what is on the card now; the original keeps its saved values.
   Object.assign(copy, { ...exercise, id: newId, name: `${exercise.name} (copy)` });
+  const before = state.exercises;
   state.exercises = list;
-  saveExercises();
+  if (!saveExercises()) {   // P6: stay on the card, no copy made
+    state.exercises = before;
+    showMessage('saveMsg', SAVE_FAILED_MESSAGE);
+    return;
+  }
   goHome();
   showToast(`Made “${copy.name}”.`, { ms: 4000 });
 }
@@ -326,12 +337,18 @@ function saveAll() {
     showMessage('saveMsg', cards.length > 1 ? `Card ${firstBad + 1} needs a look before saving. The marked field shows where.` : 'This exercise needs a look before saving. The marked field shows where.');
     return;
   }
+  const before = state.exercises;
+  state.exercises = before.slice();
   exercises.forEach((exercise) => {
     const existing = state.exercises.findIndex((x) => x.id == exercise.id);
     if (existing >= 0) state.exercises[existing] = exercise;
     else state.exercises.push(exercise);
   });
-  saveExercises();
+  if (!saveExercises()) {   // P6: keep the screen and every card exactly as they are, so nothing typed is lost
+    state.exercises = before;
+    showMessage('saveMsg', SAVE_FAILED_MESSAGE);
+    return;
+  }
   goHome();
 }
 
