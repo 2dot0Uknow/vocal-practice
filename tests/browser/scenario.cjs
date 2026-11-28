@@ -16,7 +16,6 @@ const CHROME_ARGS = [
 const SCREENS = ['lib', 'add', 'prac', 'rep'];
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** Open the app in a fresh browser context and collect every console / page error. */
 /**
  * A steady one-second tone (196 Hz, G3, a whole number of cycles so it loops without a click) for the fake microphone.
  * Chrome's default fake mic only beeps for ~60 ms every half second, which at ~50 analyses per second gives a note
@@ -31,7 +30,11 @@ function steadyToneFile() {
   return file;
 }
 
-async function openApp(baseUrl, { colorScheme = 'light', initScript = null, steadyTone = false, samples = false, viewport = null, reducedMotion = 'reduce' } = {}) {
+/**
+ * Open the app in a fresh browser context and collect every console / page error.
+ * serviceWorker: false (default) blocks the service worker; true lets it register (P2 checks). The browser and context are returned too.
+ */
+async function openApp(baseUrl, { colorScheme = 'light', initScript = null, steadyTone = false, samples = false, viewport = null, reducedMotion = 'reduce', serviceWorker = false } = {}) {
   const args = steadyTone ? [...CHROME_ARGS, `--use-file-for-fake-audio-capture=${steadyToneFile()}`] : CHROME_ARGS;
   const browser = await chromium.launch({ executablePath: '/usr/bin/google-chrome', args });
   const context = await browser.newContext({
@@ -40,12 +43,12 @@ async function openApp(baseUrl, { colorScheme = 'light', initScript = null, stea
     colorScheme,
     permissions: ['microphone'],
     reducedMotion,
+    // P2: the service worker is blocked unless a check asks for it ({serviceWorker: true}), so its cache cannot make other checks depend on order.
+    serviceWorkers: serviceWorker ? 'allow' : 'block',
   });
   const errors = [];
   if (initScript) await context.addInitScript(initScript);
   const page = await context.newPage();
-  // No network in CI-like environments: answer the Google Fonts request with an empty stylesheet so it is not an "error".
-  await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.fulfill({ status: 200, contentType: 'text/css', body: '' }));
   // F5: the recorded piano is off by default in these checks, so the older checks keep seeing the synthesised piano's
   // oscillators (what they count). Pass {samples: true} to let the samples load. The aborted fetches are expected, not errors.
   if (!samples) {
@@ -62,7 +65,7 @@ async function openApp(baseUrl, { colorScheme = 'light', initScript = null, stea
   });
   await page.goto(baseUrl, { waitUntil: 'load' });
   await page.waitForSelector('#list');
-  return { browser, page, errors };
+  return { browser, context, page, errors };
 }
 
 const activeScreen = (page) => page.evaluate(() => [...document.querySelectorAll('section.on')].map((s) => s.id).join(','));
