@@ -6,6 +6,7 @@ import { state } from '../state.js';
 import { store, KEYS } from '../store.js';
 import { noteName, hzToMidi, spellingOf } from '../music.js';
 import { planRounds, describeExercise } from '../exercise.js';
+import { parsePat } from '../music.js';
 import { detect } from '../pitch.js';
 import { cents, strictAt, estimateLag, activeAt, median, summarizeSession } from '../scoring.js';
 import { createCalibration, rms, DEFAULT_GATE } from '../calibration.js';
@@ -24,6 +25,7 @@ import { createSessionMachine, decideEnd, reportTitle, MIC_MESSAGES } from '../s
 import { acquireWakeLock, releaseWakeLock } from '../wakelock.js';
 import { createRoll } from './roll.js';
 import { showReport } from './report.js';
+import { openEditor } from './editor.js';
 import { previousRunsOf } from '../history.js';
 
 let currentExercise = null;
@@ -87,16 +89,22 @@ export function refreshRoll() {
 /** Put the practice screen back to its idle look for the current exercise. */
 function resetPracticeView() {
   // Idle preview: the first rounds laid out from time 0, as a run would place them.
-  run = createRun(planRounds(currentExercise));
-  run.start(0);
-  run.advance(0, PLACE_AHEAD);
+  try {
+    run = createRun(planRounds(currentExercise));
+    run.start(0);
+    run.advance(0, PLACE_AHEAD);
+  } catch (error) {
+    // A saved exercise whose pattern does not parse: show an empty roll; Start explains (see startSession).
+    console.warn('Could not lay out this exercise', error);
+    run = null;
+  }
   frameStore.clear();
   holdView = null;
   $('goBtn').textContent = 'Start';
   $('goBtn').disabled = false;
   updateControls();
-  $('rSyl').textContent = run.targets()[0]?.syl || '–';
-  roll.fit(run.targets(), 0, false);
+  $('rSyl').textContent = run?.targets()[0]?.syl || '–';
+  if (run) roll.fit(run.targets(), 0, false);
   drawRoll();
 }
 
@@ -113,6 +121,16 @@ export function openPractice(exercise) {
 
 function showMicCard(reason) {
   $('micCardMsg').textContent = MIC_MESSAGES[reason] || MIC_MESSAGES.other;
+  $('micRetry').hidden = false;
+  $('editFix').hidden = true;
+  $('micCard').hidden = false;
+}
+
+/** The exercise itself could not be started (a pattern that does not parse): say so, and offer the editor instead of Try again. */
+function showExerciseCard() {
+  $('micCardMsg').textContent = parsePat(currentExercise.pat) ? "I couldn't start this exercise. Tap Edit to check it." : "This exercise's pattern needs fixing. Tap Edit to check it.";
+  $('micRetry').hidden = true;
+  $('editFix').hidden = false;
   $('micCard').hidden = false;
 }
 
@@ -128,6 +146,18 @@ async function startSession() {
   if (!session.can('starting')) return;   // already starting, running or stopping: a second tap does nothing
   session.go('starting');
   const token = ++sessionToken;
+  try {
+    await beginSession(token);
+  } catch (error) {
+    // Anything unexpected (e.g. a pattern that does not parse): let go of mic and audio, back to idle, and explain.
+    console.warn('Could not start the session', error);
+    if (token !== sessionToken) return;
+    abortSession();
+    showExerciseCard();
+  }
+}
+
+async function beginSession(token) {
   hideMicCard();
   hideLeakCard();
   $('goBtn').disabled = true;
@@ -482,6 +512,7 @@ export function initPractice() {
   $('repeatBtn').onclick = againRound;
   $('skipBtn').onclick = skipRound;
   $('micRetry').onclick = startSession;
+  $('editFix').onclick = () => openEditor(currentExercise);
   $('leakDismiss').onclick = hideLeakCard;
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') {

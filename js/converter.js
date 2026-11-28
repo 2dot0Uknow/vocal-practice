@@ -225,7 +225,8 @@ export function parseLine(line, defaultRange) {
     guess = keyword ? { kind: 'keyword', what: keyword[2] } : { kind: 'fallback' };
   }
   if (!/~/.test(pattern)) pattern += '~';
-  if (!parsePat(pattern)) {
+  // A single note is a valid pattern for the editor, but a lone digit in a line of prose is usually not one: ask for two.
+  if (!parsePat(pattern, 2)) {
     pattern = FALLBACK_PATTERN;
     guess = { kind: 'fallback' };
   }

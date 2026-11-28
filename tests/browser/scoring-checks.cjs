@@ -16,6 +16,8 @@ const EXERCISES = [
   exercise('g3', 55, 'G3 held'),             // lands; chord G B D contains G: leak
   exercise('g4', 67, 'G4 held'),             // an octave above the tone: off + octave tip; chord G B D: leak
   exercise('d3', 50, 'D3 held'),             // chord D F# A has no G: no leak
+  { ...exercise('one', 55, 'One note'), pat: '1~' },     // robustness fix: a single held note is a valid pattern
+  { ...exercise('bad', 55, 'Bad pattern'), pat: 'x' },   // a saved exercise that does not parse
 ];
 const seed = `
   if (!sessionStorage.getItem('seeded')) {
@@ -98,6 +100,35 @@ async function runScoringChecks(baseUrl) {
     const hist = await page.evaluate(() => JSON.parse(localStorage.getItem('vp_hist')));
     // The D3 run is a G3 voice 500 cents from the note: left out as "not this note" (as before A1), so nothing was heard and nothing is saved.
     expect(hist.length === 2 && hist.every((entry) => entry.sound === 'ah'), `two saved runs, each with sound "ah" (saw ${JSON.stringify(hist.map((e) => e.sound))})`);
+    // 5. A one-note pattern plays and reports (before the fix Start stuck on "Starting…").
+    const one = await runExercise(page, 3);
+    observations.one = one;
+    expect(one.sPct === '100%' && one.cells.includes('G3'), `a single-note exercise should play and land (saw ${one.sPct}, "${one.cells}")`);
+
+    // 6. A pattern that does not parse: the friendly card with Edit (no Try again), Start is not stuck, Edit opens the editor.
+    await page.evaluate(() => document.querySelector('[data-go=lib]')?.click());
+    await page.waitForSelector('#list');
+    await page.click('#list button[data-a=p][data-i="4"]');
+    await page.click('#goBtn');
+    await page.waitForFunction(() => !document.getElementById('micCard').hidden, null, { timeout: 10000 });
+    const bad = await page.evaluate(() => ({
+      msg: document.getElementById('micCardMsg').textContent,
+      retryHidden: document.getElementById('micRetry').hidden,
+      editHidden: document.getElementById('editFix').hidden,
+      button: document.getElementById('goBtn').textContent,
+      disabled: document.getElementById('goBtn').disabled,
+      screen: document.querySelector('section.on')?.id,
+    }));
+    observations.bad = bad;
+    expect(bad.msg.includes('pattern needs fixing'), `friendly pattern message (saw "${bad.msg}")`);
+    expect(bad.retryHidden && !bad.editHidden, 'Try again hidden, Edit exercise shown');
+    expect(bad.button === 'Start' && !bad.disabled && bad.screen === 'prac', `Start must not be stuck (saw "${bad.button}", disabled ${bad.disabled})`);
+    await page.click('#editFix');
+    await page.waitForFunction(() => document.querySelector('section.on')?.id === 'add', null, { timeout: 5000 });
+    expect(await page.evaluate(() => document.getElementById('addTitle').textContent) === 'Edit exercise', 'Edit opens the editor for it');
+    await page.evaluate(() => document.querySelector('[data-go=lib]')?.click());
+    await page.waitForSelector('#list');
+
     // Without ?debug=1 (same browser tab, plain address) there is no download link.
     await page.goto(baseUrl, { waitUntil: 'load' });
     await page.waitForSelector('#list');

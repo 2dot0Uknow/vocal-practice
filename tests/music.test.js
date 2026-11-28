@@ -21,7 +21,9 @@ test('midiToHz and hzToMidi', () => {
 });
 
 test('parsePat matches the original for valid and invalid patterns', () => {
-  for (const { input, expected } of fixture.parsePat) assertSame(parsePat(input), expected, JSON.stringify(input));
+  // Robustness fix (PR 6): a single note is now a valid pattern, so the one pinned input that was a lone note ('1') changed from null.
+  const NOW_VALID = { 1: [{ deg: 1, s: 0, h: false }] };
+  for (const { input, expected } of fixture.parsePat) assertSame(parsePat(input), NOW_VALID[input] ?? expected, JSON.stringify(input));
 });
 
 test('parsePat: a few readable examples', () => {
@@ -30,7 +32,12 @@ test('parsePat: a few readable examples', () => {
     { deg: 3, s: 4, h: false },
     { deg: 5, s: 7, h: true },
   ]);
-  assert.equal(parsePat('1'), null, 'a single note is not a pattern');
+  // Robustness fix (PR 6): one note is a valid sustain drill; the converter still asks for two (see converter.test.js).
+  assert.deepEqual(parsePat('1'), [{ deg: 1, s: 0, h: false }]);
+  assert.deepEqual(parsePat('1~'), [{ deg: 1, s: 0, h: true }]);
+  assert.deepEqual(parsePat('b3~'), [{ deg: 3, s: 3, h: true }]);
+  assert.equal(parsePat('1', 2), null, 'a caller can still ask for two notes');
+  for (const bad of ['', '   ', 'x', '1x', '16', '0', '~']) assert.equal(parsePat(bad), null, JSON.stringify(bad));
   assert.equal(parsePat('1-16'), null, 'degrees stop at 15');
   assert.equal(parsePat('1-8').at(-1).s, 12, 'degree 8 is an octave up');
 });
