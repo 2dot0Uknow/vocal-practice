@@ -56,9 +56,12 @@ async function runScoringChecks(baseUrl) {
   };
 
   // ?debug=1 for all three runs; a normal tab is checked afterwards.
-  const { browser, page, errors: pageErrors } = await openApp(debugUrl, { initScript: seed, steadyTone: true });
+  const { browser, page, errors: pageErrors } = await openApp(debugUrl, { initScript: seed, steadyTone: true, samples: true });   // PR 7: with the recorded piano loaded
   errors.push(...pageErrors);
   try {
+    // PR 7 (F5): this whole check runs with the recorded piano on. The fake mic is a tone file, so the piano's own
+    // output does not reach it in headless Chrome; the leak notice is driven by that tone, exactly as before.
+    // Samples are fetched when the first practice screen opens, so ready is checked after the first run below.
     // 1. Landed note, piano on a chord note: leak.
     const g3 = await runExercise(page, 0);
     observations.g3 = g3;
@@ -67,6 +70,8 @@ async function runScoringChecks(baseUrl) {
     expect(g3.sawLeakCard, 'the practice screen should show the piano-leak notice (the tone is on a chord note)');
     expect(g3.leakNote.includes('a little generous'), `report should say the score may be generous (saw "${g3.leakNote}")`);
 
+    const piano = await page.evaluate(async () => (await import(new URL('js/audio.js', location.href).href)).pianoStatus());
+    expect(piano.state === 'ready', `the sampler should be loaded during this check (saw ${JSON.stringify(piano)})`);
     // 2. Debug download: present, and holds the fields a fixture needs.
     expect(!g3.debugRowHidden, 'debug link should be shown with ?debug=1');
     const session = await page.evaluate(async () => JSON.parse(await (await fetch(document.getElementById('debugLink').href)).text()));

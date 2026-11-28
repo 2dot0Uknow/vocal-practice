@@ -6,7 +6,9 @@ import { navTo } from './navigation.js';
 import { noteName, spellingOf } from '../music.js';
 import { store, KEYS } from '../store.js';
 import { state } from '../state.js';
-import { historyEntry, addToHistory } from '../history.js';
+import { historyEntry, addToHistory, previousRunsOf } from '../history.js';
+import { sparkline } from '../sparkline.js';
+import { recordSetResult, setSummaryRows } from '../flow.js';
 
 /** The stat bars: label, a coloured bar, and a word. */
 export const statRowsHTML = (rows) => rows.map(({ name, value, label }) => `<div class="stat"><span>${name}</span><span class="b"><i style="width:${Math.round(value)}%;background:${value >= 70 ? 'var(--on)' : value >= 45 ? 'var(--near)' : 'var(--far)'}"></i></span><span>${esc(label)}</span></div>`).join('');
@@ -29,6 +31,14 @@ export function noteStripsHTML(results, exercise) {
   }).join('')}</div>`).join('');
 }
 
+/** F9: the last ten saved runs of this exercise as a tiny inline SVG (no axes); the newest run is the big dot. Hidden with fewer than 2 runs. */
+export function sparklineHTML(percents, highlightLast) {
+  const line = sparkline(percents);
+  if (!line) return '';
+  const dots = line.points.map((point, i) => `<circle cx="${point.x}" cy="${point.y}" r="${i === line.points.length - 1 ? 4 : 2.5}"${highlightLast && i === line.points.length - 1 ? ' class="now"' : ''}/>`).join('');
+  return `<svg viewBox="0 0 120 32" role="img" aria-label="${esc(line.label)}"><polyline points="${line.path}"/>${dots}</svg><span aria-hidden="true">Last ${line.count} runs</span>`;
+}
+
 let debugUrl = null;   // object URL of the current debug download, released when the next report opens
 
 /**
@@ -45,10 +55,17 @@ export function showReport(exercise, summary, { title = exercise.name, save = tr
   $('good').innerHTML = listItemsHTML(summary.good);
   $('cheer').textContent = summary.cheer;
   $('notesOut').innerHTML = noteStripsHTML(summary.results, exercise);
-  if (save && summary.saveable) {
+  const saved = !!(save && summary.saveable);
+  if (saved) {
     store.set(KEYS.history, addToHistory(store.get(KEYS.history, []), historyEntry(exercise, summary)));
     state.historyShown = 3;
   }
+  // F9: saved runs of this exercise, oldest first (history is newest first). A stopped run is not in it, so nothing is highlighted then.
+  const percents = previousRunsOf(store.get(KEYS.history, []), exercise).map((entry) => entry.pct).filter((pct) => typeof pct == 'number').reverse();
+  const sparkHTML = sparklineHTML(percents, saved);
+  $('spark').innerHTML = sparkHTML;
+  $('spark').hidden = !sparkHTML;
+  showSetSummary(exercise, summary, saved, !save);
   $('trNote').hidden = !summary.hasTrillNotes;
   $('toneNote').hidden = summary.toneHidden;
   $('leakNote').textContent = summary.leakNote;
@@ -64,4 +81,14 @@ export function showReport(exercise, summary, { title = exercise.name, save = tr
   $('nextBtn').hidden = !state.queue.length;
   if (state.queue.length) $('nextBtn').textContent = 'Next: ' + state.queue[0].name;
   navTo('rep');
+}
+
+/** F8: in "Practice all", remember this exercise's result; after the last one's report, list the whole set. */
+function showSetSummary(exercise, summary, saved, partial) {
+  $('setCard').hidden = true;
+  if (!state.set) return;
+  state.set.results = recordSetResult(state.set.results, { id: exercise.id, name: exercise.name, pct: summary.pct, saved, partial });
+  if (state.queue.length || state.set.total < 2) return;
+  $('setRows').innerHTML = setSummaryRows(state.set.results).map((row) => `<div class="setrow"><span>${esc(row.name)}</span><span>${esc(row.text)}</span></div>`).join('');
+  $('setCard').hidden = false;
 }

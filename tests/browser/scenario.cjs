@@ -31,11 +31,11 @@ function steadyToneFile() {
   return file;
 }
 
-async function openApp(baseUrl, { colorScheme = 'light', initScript = null, steadyTone = false } = {}) {
+async function openApp(baseUrl, { colorScheme = 'light', initScript = null, steadyTone = false, samples = false, viewport = null } = {}) {
   const args = steadyTone ? [...CHROME_ARGS, `--use-file-for-fake-audio-capture=${steadyToneFile()}`] : CHROME_ARGS;
   const browser = await chromium.launch({ executablePath: '/usr/bin/google-chrome', args });
   const context = await browser.newContext({
-    viewport: { width: 390, height: 844 },
+    viewport: viewport || { width: 390, height: 844 },
     deviceScaleFactor: 1,
     colorScheme,
     permissions: ['microphone'],
@@ -46,11 +46,17 @@ async function openApp(baseUrl, { colorScheme = 'light', initScript = null, stea
   const page = await context.newPage();
   // No network in CI-like environments: answer the Google Fonts request with an empty stylesheet so it is not an "error".
   await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.fulfill({ status: 200, contentType: 'text/css', body: '' }));
+  // F5: the recorded piano is off by default in these checks, so the older checks keep seeing the synthesised piano's
+  // oscillators (what they count). Pass {samples: true} to let the samples load. The aborted fetches are expected, not errors.
+  if (!samples) {
+    await page.route(/\/audio\/piano\//, (route) => route.abort());
+  }
   page.on('console', (message) => {
-    if (message.type() === 'error') errors.push(`console.error: ${message.text()}`);
+    // Chrome itself logs "Failed to load resource" for every aborted sample fetch; that line is the browser's, not the app's.
+    if (message.type() === 'error' && !(!samples && /Failed to load resource: net::ERR_FAILED/.test(message.text()))) errors.push(`console.error: ${message.text()}`);
   });
   page.on('pageerror', (error) => errors.push(`pageerror: ${error.message}`));
-  page.on('requestfailed', (request) => errors.push(`requestfailed: ${request.url()} ${request.failure()?.errorText}`));
+  page.on('requestfailed', (request) => !/\/audio\/piano\//.test(request.url()) && errors.push(`requestfailed: ${request.url()} ${request.failure()?.errorText}`));
   page.on('response', (response) => {
     if (response.status() >= 400) errors.push(`http ${response.status()}: ${response.url()}`);
   });
@@ -157,10 +163,12 @@ async function runScenario(baseUrl, { shots } = {}) {
     obs.practice = { name: await text(page, '#pName'), info: await text(page, '#pInfo'), syl: await text(page, '#rSyl'), go: await text(page, '#goBtn') };
     await shot('prac-idle-light');
     // Same screen in the dark theme (two taps: auto -> light -> dark), then back to auto.
-    await page.click('#themeBtn');
-    await page.click('#themeBtn');
+    // (F4: the practice screen has no theme button, so press it by script.)
+    const pressTheme = () => page.evaluate(() => document.getElementById('themeBtn').click());
+    await pressTheme();
+    await pressTheme();
     await shot('prac-idle-dark');
-    await page.click('#themeBtn');
+    await pressTheme();
     await page.evaluate(() => {
       const slider = document.getElementById('sync');
       slider.value = '230';
@@ -231,17 +239,16 @@ async function runScenario(baseUrl, { shots } = {}) {
     // Delete needs a second tap; do it on the renamed exercise.
     await page.fill('#eds .ed [data-k=pat]', '1-2-3');
     await page.dispatchEvent('#eds .ed [data-k=pat]', 'change');
-    await page.click('#eds .ed [data-a=del]');
-    obs.deleteLabel = await text(page, '#eds .ed [data-a=del]');
+    // F6: Delete is immediate now (with an Undo toast), no second tap.
     await page.click('#eds .ed [data-a=del]');
     await visit('lib');
+    obs.deleteToast = await text(page, '#toast');
     obs.libraryAfterDelete = await text(page, '#list');
     // Remove the remaining sample exercises so "Practice all" only has the two quick ones.
     for (;;) {
       const sampleIndex = await page.evaluate(() => [...document.querySelectorAll('#list .ex b')].findIndex((b) => !b.textContent.startsWith('Quick')));
       if (sampleIndex < 0) break;
       await page.click(`#list button[data-a=e][data-i="${sampleIndex}"]`);
-      await page.click('#eds .ed [data-a=del]');
       await page.click('#eds .ed [data-a=del]');
       await visit('lib');
     }
@@ -274,4 +281,4 @@ async function runScenario(baseUrl, { shots } = {}) {
   return { errors, observations: obs };
 }
 
-module.exports = { runScenario, openApp, normaliseStorage, CHROME_ARGS, sleep, steadyToneFile };
+module.exports = { runScenario, openApp,  normaliseStorage, CHROME_ARGS, sleep, steadyToneFile };

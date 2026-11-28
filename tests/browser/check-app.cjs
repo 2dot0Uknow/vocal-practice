@@ -10,6 +10,7 @@ const { runConverterChecks } = require('./converter-checks.cjs');
 const { runHistoryChecks } = require('./history-checks.cjs');
 const { runFlowChecks } = require('./flow-checks.cjs');
 const { runScoringChecks } = require('./scoring-checks.cjs');
+const { runPolishChecks } = require('./polish-checks.cjs');
 const { runPerfChecks } = require('./perf-checks.cjs');
 
 (async () => {
@@ -49,6 +50,11 @@ const { runPerfChecks } = require('./perf-checks.cjs');
   if (!args.includes('--no-scoring')) {
     const scoring = await runScoringChecks(baseUrl);
     errors.push(...scoring.errors);
+  }
+  // PR 7: recorded piano, practice screen layout, readouts, library reorder / undo, set summary, sparkline, first launch (skip with --no-polish).
+  if (!args.includes('--no-polish')) {
+    const polish = await runPolishChecks(baseUrl, { shotsDir });
+    errors.push(...polish.errors);
   }
   // PR 5: the two-minute 24-round performance run (only with --perf; also runnable alone: node tests/browser/perf-checks.cjs).
   if (args.includes('--perf')) {

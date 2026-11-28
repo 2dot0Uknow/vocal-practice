@@ -29,6 +29,7 @@ test('storage keys are the ones already saved on people\'s phones', () => {
     pictureDelay: 'vp_lat',
     voiceLag: 'vp_vlag',
     theme: 'vp_theme',
+    onboarded: 'vp_onboarded', // F10: a new key (a flag), not a shape change
     schema: 'vp_schema', // P7: the data-shape version
   });
 });
