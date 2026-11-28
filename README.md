@@ -40,7 +40,8 @@ GitHub Actions runs `node --test` on every push and pull request (`.github/workf
 
 These drive real headless Chrome through the whole app with Playwright. They expect Playwright at
 `/opt/npm-tools/node_modules/playwright` and Chrome at `/usr/bin/google-chrome` (edit the two paths at the top of
-`tests/browser/scenario.cjs` if yours differ). The browser is started with a fake microphone.
+`tests/browser/scenario.cjs` if yours differ). The browser is started with a fake microphone. The service worker is blocked in every check except `offline-checks`
+(`openApp(url, {serviceWorker: true})` lets it register), so the cache cannot make the other checks depend on each other.
 
 ```
 node tests/browser/check-app.cjs                  # tour every screen; fails on any console/page error
@@ -53,6 +54,7 @@ node tests/browser/polish-checks.cjs --shots out/   # same, and screenshots of l
 node tests/browser/flow-checks.cjs               # (run by check-app) Pause / Resume, Again, Skip, skip the last round; which piano notes were scheduled and cancelled
 node tests/browser/perf-checks.cjs               # (check-app --perf) plays a 24-round arpeggio to the end (~2 min): oscillators created vs alive, analyses per second, report delay
 node tests/browser/a11y-checks.cjs [--shots out/]  # (run by check-app) accessibility audit of every screen in both themes (names, ids, headings, focus, contrast >= 4.5), plus cell cues, labels, roll labels / glow, theme-color, favicon, no inline styles, fades and the percent count-up
+node tests/browser/offline-checks.cjs [--shots out/]  # (run by check-app) service worker, offline session, update toast, installability, export / import
 node tests/browser/check-app.cjs --shots out/     # same, and save screenshots into out/
 node tests/browser/compare-old-new.cjs            # same tour on commit 2aaf0bd and on your working tree; fails if anything differs
 node tests/browser/compare-old-new.cjs <commit>   # compare against another baseline commit
@@ -66,7 +68,11 @@ when a later change alters behaviour on purpose, expect (and review) the differe
 
 ```
 index.html            markup only
-styles.css            all styles (design intent in the comment at the top)
+styles.css            all styles (design intent in the comment at the top; @font-face for the self-hosted fonts)
+manifest.webmanifest  install info (name, icons, colours; relative start_url / scope so it works under /vocal-practice/ and on localhost)
+sw.js                 the service worker (a module): caches the app's own files, offline-first; waits for a tap before updating
+icons/                app icons 192, 512 and maskable 512 (tools/make-icons.cjs drew them once from favicon.svg)
+fonts/                Nunito and Inter as Latin WOFF2 (tools/make-fonts.sh shows how they were made) and their OFL licences
 js/main.js            entry point: loads data, wires the screens together
 js/music.js           note names (sharps, flats or automatic spelling), toMidi / midiToHz / hzToMidi, parsePat (pattern language), rootsOf (round roots)
 js/exercise.js        exercise model (normEx), sample exercises, planRounds / placeRound (a round's notes relative to its start, then on the clock), buildSession (the old whole-timeline layout, kept as the reference for tests), describeExercise
@@ -86,7 +92,11 @@ js/flow.js            round line, "Ready…" count-in, when readouts fade, set s
 js/library-ops.js     reorder / duplicate / delete + undo, first-launch range and re-basing the samples (pure)
 js/sparkline.js       the report's last-ten-runs line: geometry and label (pure)
 js/audio.js           audio context, recorded piano (samples loaded lazily; synthesised piano as the fallback) behind a limiter, microphone chain, trill mode
-js/store.js           localStorage wrapper and the storage key names
+js/version.js         APP_VERSION, the one number to change to ship an update
+js/precache.js        the explicit list of files sw.js stores (tests/precache.test.js checks it against the disk)
+js/backup.js          Export / Import: file shape, validation, Merge and Replace rules (pure)
+js/persist.js         asks the browser to keep the storage (navigator.storage.persist, once)
+js/store.js           localStorage wrapper and the storage key names; set() returns false on failure and the first failure of a visit is reported
 js/migrate.js         migrate(storage): data-shape version (vp_schema) and the steps that bring saved data up to date
 js/history.js         history entries (what a run saves), previousRunsOf (by exercise id), the 200-entry cap
 js/state.js           in-memory state shared by screens (exercises, default range, "practice all" queue)
@@ -99,6 +109,8 @@ js/ui/practice.js     practice screen: scheduler tick (places rounds, plays the 
 js/ui/roll.js         the pitch roll canvas (round labels, held-in-tune glow; fonts and sizes from the --roll-* CSS properties)
 js/ui/report.js       report screen: HTML from summarizeSession(), saves history
 js/ui/toast.js        the bottom message with Undo
+js/ui/data.js         "Your data" section: Export, Import, Merge / Replace buttons
+js/ui/update.js       registers sw.js; the "Update ready, tap to reload" toast
 js/ui/theme.js        theme button (shows Auto / Light / Dark)
 favicon.svg / .png    the sun mark (tools/make-favicon.cjs made the PNG once with sharp; it is committed, nothing builds it)
 tests/                node --test files (contrast.test.js measures every text / fill pair from styles.css); helpers/ (synthetic signals), fixtures/, tools/ (generator), browser/ (Playwright)
@@ -174,6 +186,44 @@ Open the app with `?debug=1` on the end of the address: the report then shows "D
 exercise, targets, pitch frames, voice lag, output latency, pitch gate, piano-leak flag, user agent and app version.
 Put such files in `tests/fixtures/sessions/` (see the README there); `tests/sessions.test.js` runs each through `summarizeSession`.
 
+## Offline, installing and updates
+
+The app is installable (manifest + icons; Chrome on Android offers "Install app" / "Add to Home screen") and works with no connection after
+the first visit. `sw.js` stores every file in `js/precache.js` (the app, the fonts, the icons and all 17 piano samples, about 0.6 MB) when a version
+installs, answers those from the cache first, and sends everything else to the network. The Tesseract text reader (photo import) stays online-only:
+it is fetched from its CDN only when you use "Photo or screenshot".
+
+### Releasing an update
+
+Change the one line in `js/version.js` (the release date, `YYYY.MM.DD`, plus a letter for a second release the same day: `2026.11.27b`), commit, push.
+That is all. The version is in the cache name, so the browser sees a different `sw.js` (it re-checks the files `sw.js` imports), installs the new
+cache alongside the old one, and phones that have the app open show "Update ready, tap to reload" (on the library, editor and report, never
+on a practice screen, so a session is not interrupted; it appears when the session ends). Tapping it switches to the new version and reloads;
+the old cache is deleted when the new version activates. The version also shows small at the bottom of the library.
+If a file is added to or removed from the app, edit `js/precache.js` too: `node --test` fails until the list matches the files on disk.
+Without a version bump, an edited file is not picked up by phones that already have the app (they keep the cached copy).
+
+To look at the site without the service worker, add `?nosw=1` to the address (it only skips registering; use Chrome's
+Application > Service Workers > Unregister to remove an installed one). In the browser checks the worker is blocked unless a check asks for it.
+
+### Your data: backup and restore
+
+The "Your data" section at the bottom of the library has **Export backup** (downloads `vocal-practice-backup-YYYY-MM-DD.json`) and
+**Import backup**. The file is `{app: "vocal-practice", schema, exportedAt, data: {vp_ex, vp_hist, vp_def, vp_lat, vp_vlag, vp_theme, vp_onboarded}}`
+(a key is left out when nothing is saved for it). Import checks the file (right app, a data shape this version knows, the right kinds of values), runs an
+older backup through the same migrations as saved data, shows "12 exercises, 48 sessions" and asks:
+**Merge** keeps what is on the phone, adds exercises with a new id, and unions the history (same time + exercise counts once), newest first, at most 200; settings are untouched.
+**Replace** makes the phone match the backup exactly (a setting the backup lacks goes back to automatic). If a save fails halfway, the earlier data is put back.
+After the first successful save of the library the app asks the browser to keep its storage (`navigator.storage.persist()`), once per visit and not at all when already granted.
+If the browser ever refuses a save (storage full), a toast says so once per visit and suggests exporting a backup.
+
+### Follow-up: Tesseract integrity hash
+
+The script is pinned to `tesseract.js@5.1.1` and loaded with `crossorigin`, but without a Subresource Integrity hash: one cannot be computed without fetching the exact file,
+and it is not safe to invent one. To add it, on a machine with a connection run
+`curl -s https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js | openssl dgst -sha384 -binary | openssl base64 -A`
+and set `script.integrity = 'sha384-<that output>'` next to `script.crossOrigin` in `js/ui/photo.js`. (Tesseract also fetches its worker, WASM core and language data at run time; those are not covered by this hash.)
+
 ## Migrations
 
 `migrate()` (js/migrate.js) runs at startup before the data is loaded. It reads `vp_schema`, applies the steps in `STEPS`
@@ -206,7 +256,8 @@ An exercise:
 
 ## Credits
 
-Fonts: Nunito and Inter (Google Fonts, SIL Open Font License).
+Fonts: Nunito (Nunito Project Authors) and Inter (Inter Project Authors), SIL Open Font License 1.1, served from `fonts/` as trimmed Latin variable WOFF2 files.
+Licences: `fonts/OFL-Nunito.txt`, `fonts/OFL-Inter.txt`; `tools/make-fonts.sh` shows how the files were made.
 
 Piano: Salamander Grand Piano by Alexander Holm, CC BY 3.0, trimmed and converted to mono.
 (`audio/piano/`, see `audio/piano/LICENSE.txt`; `tools/make-piano-samples.sh` shows exactly how the 17 files were made.)

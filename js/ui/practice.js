@@ -73,6 +73,13 @@ let roll = null;
 /** The song clock: audio time minus what the player hears late. */
 const songTime = () => getAudioContext().currentTime - outputLatency;
 
+/** After a backup is restored (P5): read the picture delay and voice lag again from storage. */
+export function reloadSavedSettings() {
+  outputLatency = store.get(KEYS.pictureDelay, null);
+  voiceLag = store.get(KEYS.voiceLag, 0.15);
+  showPictureDelay();
+}
+
 function showPictureDelay() {
   $('sync').value = Math.round((outputLatency ?? 0.1) * 1000);
   fillRange($('sync'));

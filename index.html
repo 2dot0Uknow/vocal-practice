@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#fdfbf7" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0f1828" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="icon" href="favicon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>Vocal Practice</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -18,6 +18,7 @@
   <div class="top"><span class="dot" aria-hidden="true"></span><div class="grow"><h1 id="libTitle" tabindex="-1">Vocal Practice</h1><p class="sub">Your coach's exercises, at your own pace</p></div>
     <button class="ghost themebtn" id="themeBtn" aria-label="Change colour theme"></button></div>
   <div id="toast" class="toast" role="status" hidden><span id="toastMsg"></span><button class="ghost" id="toastUndo" hidden>Undo</button></div>
+  <div id="updateToast" class="toast update" role="status" hidden><button class="ghost" id="updateBtn">Update ready, tap to reload</button></div>
 
   <section id="lib" class="on">
     <div id="micWarn" class="card warn" hidden></div>
@@ -37,6 +38,20 @@
     <h2 class="mt-s5">Your journey so far</h2>
     <div id="hist" class="hist"></div>
     <div class="row mt-s3"><button class="ghost" id="moreBtn" hidden>Load more</button></div>
+    <div class="data" id="dataBox">
+      <h2 class="data-title" id="dataTitle">Your data</h2>
+      <p class="note flush">Everything lives on this phone. A backup file is a safe copy you can keep, or use to move to a new phone.</p>
+      <div class="row mt-s3"><button class="ghost" id="exportBtn">Export backup</button><button class="ghost" id="importBtn">Import backup</button></div>
+      <input id="importFile" class="visually-hidden" type="file" accept=".json,application/json" aria-label="Choose a backup file" tabindex="-1">
+      <p class="msg" id="dataMsg" role="status" hidden></p>
+      <div id="importCard" class="card" hidden>
+        <b>Found a backup</b>
+        <p class="note tight" id="importSummary"></p>
+        <p class="note">Merge adds what is missing and keeps what is on this phone. Replace swaps everything on this phone for the backup.</p>
+        <div class="row"><button class="pri" id="mergeBtn">Merge</button><button id="replaceBtn">Replace</button><button class="ghost" id="importCancel">Cancel</button></div>
+      </div>
+      <p class="version" id="appVersion"></p>
+    </div>
   </section>
 
   <section id="add">

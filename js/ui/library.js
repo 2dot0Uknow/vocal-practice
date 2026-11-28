@@ -9,6 +9,7 @@ import { moveExercise, shouldOnboard, readComfortableRange, rebaseSamples } from
 import { entryLabel } from '../history.js';
 import { openPractice } from './practice.js';
 import { openEditor } from './editor.js';
+import { APP_VERSION } from '../version.js';
 
 const EDIT_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19.5 8.5a2.1 2.1 0 0 0-3-3L5 17z"/><path d="M14.5 7.5l3 3"/></svg>';
 const PLAY_ICON = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z" fill="currentColor"/></svg>';
@@ -148,6 +149,7 @@ function dismissOnboarding() {
 }
 
 export function initLibrary() {
+  $('appVersion').textContent = `v${APP_VERSION}`;
   $('obSave').onclick = saveOnboarding;
   $('obSkip').onclick = dismissOnboarding;
   ['obLow', 'obHigh'].forEach((id) => $(id).addEventListener('input', () => {
