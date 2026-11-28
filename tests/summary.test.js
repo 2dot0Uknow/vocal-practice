@@ -24,15 +24,32 @@ test('there are enough captured report scenarios', () => {
   assert.ok(fixture.report.length >= 18);
 });
 
+// A3: the two tone rows' words and the two tone tips are no longer absolute (they are a trend against the singer's own
+// earlier runs, and neutral "Getting a baseline" until there are three), so the pinned words for those two rows and the
+// two tone tips are expected to differ. Everything else is still compared exactly.
+const TONE_ROW = /(<span>(?:Clear tone|Ring)<\/span><span class="b">.*?<\/span><span>)[^<]*(<\/span>)/g;
+const withoutToneWords = (html) => html.replace(TONE_ROW, '$1…$2');
+const TONE_TIP = /airy side|warm and soft/;
+const tipsOf = (html) => [...html.matchAll(/<li>(.*?)<\/li>/g)].map((match) => match[1]);
+
 for (const entry of fixture.report) {
+  // A1: an octave-below voice is no longer "perfect": covered by its own tests below and in scoring.test.js.
+  if (entry.scenarioName === 'octaveBelow') continue;
   test(`report content matches the original: ${entry.key} / ${entry.scenarioName}${entry.silent ? ' (silent)' : ''}${entry.previousRuns.length ? ` (${entry.previousRuns.length} earlier)` : ''}`, () => {
     const { exercise, summary } = summaryFor(entry);
     const nodes = entry.nodes;
     assert.equal(summary.pct + '%', nodes.sPct.textContent);
     assert.equal(summary.subtitle, nodes.sSub.textContent);
     assert.equal(summary.cheer, nodes.cheer.textContent);
-    assert.equal(statRowsHTML(summary.rows), nodes.stats.innerHTML);
-    assert.equal(listItemsHTML(summary.tips), nodes.tips.innerHTML);
+    assert.equal(withoutToneWords(statRowsHTML(summary.rows)), withoutToneWords(nodes.stats.innerHTML));
+    // A3 (no baseline here): no tone tips. The other tips are the pinned ones in the same order; where a pinned tone tip
+    // had pushed another tip out of the two shown, only the first tip is compared.
+    const pinnedTips = tipsOf(nodes.tips.innerHTML);
+    const actualTips = tipsOf(listItemsHTML(summary.tips));
+    assert.ok(!actualTips.some((tip) => TONE_TIP.test(tip)), 'no tone tip before a baseline');
+    const pinnedOther = pinnedTips.filter((tip) => !TONE_TIP.test(tip));
+    if (pinnedOther.length === pinnedTips.length) assert.deepEqual(actualTips, pinnedTips);
+    else if (pinnedOther.length) assert.equal(actualTips[0], pinnedOther[0]);
     assert.equal(listItemsHTML(summary.good), nodes.good.innerHTML);
     // B7: the original app only spelled sharps, so the pinned cells are rendered with spell '#' (exercises now default to auto).
     assert.equal(noteStripsHTML(summary.results, { ...exercise, spell: '#' }), nodes.notesOut.innerHTML);

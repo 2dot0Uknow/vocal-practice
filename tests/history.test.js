@@ -37,7 +37,7 @@ test('A4: a new entry carries the exercise id and the report numbers, rounded as
   // topNote: highest target note that was heard within 50 cents.
   const landed = summary.results.filter((r) => !r.miss && Math.abs(r.med) <= 50).map((r) => r.m);
   assert.equal(entry.topNote, Math.max(...landed));
-  assert.deepEqual(Object.keys(entry), ['name', 'exId', 'pct', 'ts', 'date', 'avgCents', 'lean', 'steadiness', 'clarity', 'ring', 'topNote', 'rounds', 'notes']);
+  assert.deepEqual(Object.keys(entry), ['name', 'exId', 'pct', 'ts', 'date', 'avgCents', 'lean', 'steadiness', 'clarity', 'ring', 'topNote', 'rounds', 'notes', 'sound']);
 });
 
 test('A4: the entry matches the report subtitle ("Average N cents off")', () => {

@@ -110,7 +110,9 @@ test('summarizeSession: the same notes score the same whether or not the run was
   const full = summarizeSession({ targets: subset, frames, voiceLag: 0.15, previousRuns: [{ pct: 40 }] });
   const partial = summarizeSession({ targets: subset, frames, voiceLag: 0.15, previousRuns: [{ pct: 40 }], partial: true });
   assert.equal(partial.pct, full.pct);
-  assert.deepEqual(partial.rows, full.rows);
+  // A3: only the baseline wording differs: a full run counts itself toward "n of 3", a stopped one (never saved) does not.
+  const noBaselineWords = (rows) => rows.map((row) => (/baseline/.test(row.label) ? { ...row, label: 'baseline' } : row));
+  assert.deepEqual(noBaselineWords(partial.rows), noBaselineWords(full.rows));
   assert.notEqual(partial.cheer, full.cheer);
   assert.equal(full.saveable, true);
   assert.equal(partial.saveable, false);
