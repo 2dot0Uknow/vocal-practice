@@ -7,6 +7,11 @@ gives you a short, encouraging session report.
 
 Live at https://2dot0uknow.github.io/vocal-practice/ (GitHub Pages serves the repo root).
 
+> **Rule for anyone editing this app (people and AI agents):** if you change any file the service worker caches
+> (everything listed in `js/precache.js`, or `sw.js`), also bump `APP_VERSION` in `js/version.js`. Without that, phones that already have the app
+> keep serving their old cached copy indefinitely. CI fails a change that forgets (`tools/check-version-bump.mjs`, workflow "Version bump").
+> See "Releasing an update" below.
+
 There is no framework, no build step and no npm dependency: plain HTML, CSS and ES modules, served as they are.
 
 ## Run it locally
@@ -202,6 +207,7 @@ on a practice screen, so a session is not interrupted; it appears when the sessi
 the old cache is deleted when the new version activates. The version also shows small at the bottom of the library.
 If a file is added to or removed from the app, edit `js/precache.js` too: `node --test` fails until the list matches the files on disk.
 Without a version bump, an edited file is not picked up by phones that already have the app (they keep the cached copy).
+The "Version bump" workflow enforces this: on a pull request it compares with the base branch, on a push with the previous commit, and fails when a file in `js/precache.js` (or `sw.js`) changed but `js/version.js` did not (`node tools/check-version-bump.mjs <base>` runs the same check locally; `tests/version-bump.test.js` covers the logic).
 
 To look at the site without the service worker, add `?nosw=1` to the address (it only skips registering; use Chrome's
 Application > Service Workers > Unregister to remove an installed one). In the browser checks the worker is blocked unless a check asks for it.

@@ -50,7 +50,8 @@ export function initUpdates({ isBusy = () => false } = {}) {
     // An update that finished installing in an earlier visit and is still waiting.
     if (registration.waiting && navigator.serviceWorker.controller) offer(registration.waiting);
     registration.addEventListener('updatefound', () => {
-      const installing = registration.installing;
+      // By the time this runs a quick install may be over, and the worker then sits in `waiting` instead of `installing`.
+      const installing = registration.installing || registration.waiting;
       if (!installing) return;
       const check = () => {
         // With no controller this is the very first install: nothing to update from.

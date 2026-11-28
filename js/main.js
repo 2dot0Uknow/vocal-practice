@@ -1,6 +1,6 @@
 // App entry point: load saved data, wire every screen together, show the library.
 
-import { loadState } from './state.js';
+import { loadState, SAVE_FAILED_MESSAGE } from './state.js';
 import { store } from './store.js';
 import { migrate } from './migrate.js';
 import { initRangeFills } from './ui/dom.js';
@@ -16,7 +16,7 @@ import { initUpdates } from './ui/update.js';
 import { loadPianoSamples } from './audio.js';
 
 // P6: if the browser ever refuses a save (storage full, private mode), say so once, gently, and point to the backup.
-store.onWriteFailed(() => showToast("I couldn't save that. Your phone's storage might be full. Try exporting a backup.", { ms: 10000 }));
+store.onWriteFailed(() => showToast(SAVE_FAILED_MESSAGE, { ms: 10000 }));
 
 // Bring saved data up to date first. If that is not possible, run on the in-memory result and leave storage alone.
 const migration = migrate();

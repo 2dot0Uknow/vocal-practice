@@ -1,7 +1,7 @@
 // The library screen: journey stats, exercise list, history.
 
 import { $, esc } from './dom.js';
-import { state, saveExercises, startSet, endSet, DEFAULT_RANGE } from '../state.js';
+import { state, saveExercises, startSet, endSet, DEFAULT_RANGE, SAVE_FAILED_MESSAGE } from '../state.js';
 import { store, KEYS } from '../store.js';
 import { describeExercise, SAMPLES } from '../exercise.js';
 import { noteName } from '../music.js';
@@ -61,8 +61,15 @@ function moveInList(index, delta) {
   const moved = moveExercise(state.exercises, index, delta);
   if (moved === state.exercises) return;
   const name = state.exercises[index].name;
+  const before = state.exercises;
   state.exercises = moved;
-  saveExercises();
+  if (!saveExercises()) {   // P6: put the visible order back
+    state.exercises = before;
+    renderLibrary();
+    $('reorderNote').textContent = SAVE_FAILED_MESSAGE;
+    $('reorderNote').hidden = false;
+    return;
+  }
   renderLibrary();
   const newIndex = index + delta;
   const wanted = delta < 0 ? 'up' : 'down';
@@ -135,10 +142,16 @@ function saveOnboarding() {
     $(range.field == 'low' ? 'obLow' : 'obHigh').focus();
     return;
   }
+  const before = { range: state.defaultRange, exercises: state.exercises };
   state.defaultRange = { start: range.low, end: range.high };
-  store.set(KEYS.defaultRange, state.defaultRange);
   state.exercises = rebaseSamples(SAMPLES, range.low, range.high);
-  saveExercises();
+  if (!store.set(KEYS.defaultRange, state.defaultRange) || !saveExercises()) {   // P6: the card stays so they can try again
+    state.defaultRange = before.range;
+    state.exercises = before.exercises;
+    $('obMsg').textContent = SAVE_FAILED_MESSAGE;
+    $('obMsg').hidden = false;
+    return;
+  }
   store.set(KEYS.onboarded, 1);
   renderLibrary();
 }

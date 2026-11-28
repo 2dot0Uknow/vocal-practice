@@ -19,6 +19,9 @@ export function loadState() {
   state.defaultRange = store.get(KEYS.defaultRange, DEFAULT_RANGE);
 }
 
+/** Said when the browser refuses a save (as a toast once per visit, and inline where the person is working). */
+export const SAVE_FAILED_MESSAGE = "I couldn't save that. Your phone's storage might be full. Try exporting a backup.";
+
 /** Save the library. Returns false when the browser would not store it (the person is told once, see main.js). */
 export function saveExercises() {
   const saved = store.set(KEYS.exercises, state.exercises);

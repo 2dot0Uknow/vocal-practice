@@ -1,0 +1,34 @@
+name: Version bump
+
+# Phones keep serving the cached copy of the app until js/version.js changes (see README, "Releasing an update").
+# This fails a change that touches a cached app file or sw.js without bumping it.
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  version-bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # A push needs only the previous commit (2); a pull request needs the base branch's history too (0 = all).
+          fetch-depth: ${{ github.event_name == 'pull_request' && 0 || 2 }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Compare with the base
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [ "$EVENT" = "pull_request" ]; then
+            # The checkout is the pull request merged into its base; comparing it with the base gives exactly what the PR changes.
+            git fetch --no-tags origin "$BASE_REF"
+            BASE="origin/$BASE_REF"
+          else
+            BASE=HEAD~1
+            if ! git rev-parse --verify -q "$BASE" >/dev/null; then echo "First commit, nothing to compare."; exit 0; fi
+          fi
+          node tools/check-version-bump.mjs "$BASE"

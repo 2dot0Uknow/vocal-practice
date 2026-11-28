@@ -314,7 +314,34 @@ async function runOfflineChecks(baseUrl, { shotsDir = null } = {}) {
     await page.click('#themeBtn');
     await page.click('#themeBtn');
     expect((await toast()).hidden, 'later failures stay quiet');
+    // P6: editor Save with storage refusing: stay on the screen, cards intact, message under Save.
+    await page.evaluate(() => { window.__failWrites = false; });
+    await page.evaluate(() => { localStorage.setItem('vp_ex', JSON.stringify([{ id: 'xa', name: 'First', pat: '1-3-5', vows: ['ah'], start: 48, end: 50 }, { id: 'xb', name: 'Second', pat: '1-2-3', vows: ['ah'], start: 48, end: 50 }])); localStorage.setItem('vp_onboarded', '1'); });
+    await page.reload();
+    await page.waitForSelector('#list');
+    await page.evaluate(() => { window.__failWrites = true; });
+    const names = () => page.evaluate(() => [...document.querySelectorAll('#list .ex b')].map((n) => n.textContent));
+    await page.click('#reorderBtn');
+    await page.click('#list button[data-i="0"][data-a=down]');
+    expect(JSON.stringify(await names()) === JSON.stringify(['First', 'Second']), `reorder reverted when the save failed: ${await names()}`);
+    expect(/couldn't save that/.test(await page.evaluate(() => document.getElementById('reorderNote').textContent)), 'reorder shows the message');
+    await page.click('#reorderBtn');
+    await page.click('#list button[data-a=e][data-i="0"]');
+    await page.fill('#eds .ed [data-k=name]', 'Typed but not saved');
+    await page.click('#saveBtn');
+    const stay = await page.evaluate(() => ({ screen: document.querySelector('section.on').id, name: document.querySelector('#eds .ed [data-k=name]').value, msg: document.getElementById('saveMsg').textContent, hidden: document.getElementById('saveMsg').hidden }));
+    expect(stay.screen === 'add' && stay.name === 'Typed but not saved' && !stay.hidden && stay.msg === "I couldn't save that. Your phone's storage might be full. Try exporting a backup.", `Save failure keeps the editor and the typed input: ${JSON.stringify(stay)}`);
+    await shot(page, 'editor-save-failed');
+    await page.click('#eds .ed [data-a=dup]');
+    expect((await page.evaluate(() => document.querySelector('section.on').id)) === 'add', 'Duplicate failure stays on the editor');
+    await page.click('#eds .ed [data-a=del]');
+    expect((await page.evaluate(() => document.querySelector('section.on').id)) === 'add', 'Delete failure stays on the editor');
+    await page.click('#saveBtn');   // storage works again: the same typed card saves
+    await page.evaluate(() => { window.__failWrites = false; });
+    await page.click('#saveBtn');
+    expect((await page.evaluate(() => document.querySelector('section.on').id)) === 'lib' && (await names())[0] === 'Typed but not saved', 'once storage works again, Save keeps the typed edit');
     // An import that cannot be saved says so and changes nothing
+    await page.evaluate(() => { window.__failWrites = true; });
     const file = path.join(work, 'small.json');
     fs.writeFileSync(file, JSON.stringify({ app: 'vocal-practice', schema: 2, data: { vp_ex: [QUICK] } }));
     await page.setInputFiles('#importFile', file);
