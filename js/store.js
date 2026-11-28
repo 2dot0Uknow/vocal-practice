@@ -1,5 +1,6 @@
-// Thin wrapper around localStorage. Reads fall back to a default; writes never throw
-// (private mode / full storage simply means nothing is remembered).
+// Thin wrapper around localStorage. Reads fall back to a default; writes never throw.
+// A write that fails (private mode, full storage) returns false, and the first failure of a visit also calls the handler
+// given to onWriteFailed(), so the person can be told once (P6) instead of on every write.
 
 export const KEYS = {
   exercises: 'vp_ex',
@@ -16,7 +17,15 @@ export const KEYS = {
 // Writing a key saves for real and drops its stand-in.
 const inMemory = new Map();
 
+let failureHandler = null;
+let failureReported = false;
+
 export const store = {
+  /** `handler(error)` runs on the first failed write of the visit (and never again). Pass null to stop. */
+  onWriteFailed(handler) {
+    failureHandler = handler;
+    failureReported = false;
+  },
   /** Use these values (key -> value) for reads until the key is next written. */
   useInMemory(values) {
     Object.entries(values).forEach(([key, value]) => inMemory.set(key, value));
@@ -29,12 +38,22 @@ export const store = {
       return fallback;
     }
   },
+  /** Save `value` under `key`. Returns true when it was saved, false when the browser refused. */
   set(key, value) {
     inMemory.delete(key);
     try {
       localStorage.setItem(key, JSON.stringify(value));
+      return true;
     } catch (error) {
-      // Ignored on purpose: see the comment at the top of the file.
+      if (failureHandler && !failureReported) {
+        failureReported = true;
+        try {
+          failureHandler(error);
+        } catch (handlerError) {
+          // Telling the person must never make a failed save worse.
+        }
+      }
+      return false;
     }
   },
   remove(key) {

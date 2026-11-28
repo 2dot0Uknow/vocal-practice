@@ -79,3 +79,43 @@ test('store.useInMemory stands in for a key until it is written (a failed migrat
   store.set('vp_hist', [{ name: 'written' }]);
   assert.deepEqual(store.get('vp_hist', []), [{ name: 'written' }]);
 });
+
+// ---- P6: failed saves ----
+
+test('P6: store.set returns true when saved and false when the browser refuses', () => {
+  assert.equal(store.set('vp_def', { start: 48, end: 55 }), true);
+  failWrites = true;
+  assert.equal(store.set('vp_def', { start: 1, end: 2 }), false);
+  assert.deepEqual(store.get('vp_def', null), { start: 48, end: 55 }, 'the earlier value is still there');
+});
+
+test('P6: the failure handler runs once per visit, not on every write', () => {
+  const reports = [];
+  store.onWriteFailed((error) => reports.push(error.message));
+  failWrites = true;
+  store.set('vp_ex', [1]);
+  store.set('vp_hist', [2]);
+  store.set('vp_theme', 'dark');
+  assert.deepEqual(reports, ['quota']);
+  failWrites = false;
+  assert.equal(store.set('vp_theme', 'dark'), true, 'a good write does not call it');
+  assert.equal(reports.length, 1);
+  store.onWriteFailed(null);
+});
+
+test('P6: a storage stub whose setItem always throws (quota, private mode) gives false and one report', () => {
+  globalThis.localStorage = { getItem: () => null, removeItem() {}, setItem() { throw new DOMException('full', 'QuotaExceededError'); } };
+  let reports = 0;
+  store.onWriteFailed(() => reports++);
+  assert.equal(store.set('vp_ex', []), false);
+  assert.equal(store.set('vp_hist', []), false);
+  assert.equal(reports, 1);
+  store.onWriteFailed(null);
+});
+
+test('P6: a handler that throws does not break saving', () => {
+  store.onWriteFailed(() => { throw new Error('toast failed'); });
+  failWrites = true;
+  assert.doesNotThrow(() => store.set('vp_ex', []));
+  store.onWriteFailed(null);
+});
