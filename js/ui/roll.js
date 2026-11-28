@@ -2,7 +2,7 @@
 // with the singer's voice drawn as a line. Pure drawing: the practice screen supplies the state.
 
 import { noteName } from '../music.js';
-import { err, activeAt } from '../scoring.js';
+import { cents, activeAt, dropOctaveGlitches } from '../scoring.js';
 import { firstIndexWhere, targetRange, nearestTargetByStart } from '../timeindex.js';
 
 /**
@@ -114,29 +114,49 @@ export function createRoll(canvas) {
       }
     });
 
-    // The singer's voice: a line coloured by how close each frame is to the note it is aiming at.
+    // The singer's voice: a line drawn at the pitch actually sung (A1: no octave folding), coloured by how close each
+    // frame is to the note it is aiming at. A pitch outside the visible range is pinned to the top or bottom edge
+    // (the line runs along the edge) and the newest point gets a small arrow there, so a voice an octave off is still visible.
     context.lineWidth = 4;
     context.lineCap = 'round';
     let previousPoint = null;
-    // Frames are in time order: start at the first one that is recent enough.
-    for (let i = firstIndexWhere(frames, (frame) => frame.t - voiceLag >= now - 1.6); i < frames.length; i++) {
-      const frame = frames[i];
+    // Frames are in time order: start at the first one that is recent enough. Detector octave glitches are not drawn.
+    const visibleFrames = dropOctaveGlitches(frames.slice(firstIndexWhere(frames, (frame) => frame.t - voiceLag >= now - 1.6)));
+    let edge = 0;   // -1 / 1: the newest point is below / above the visible range
+    let edgeX = 0;
+    for (const frame of visibleFrames) {
       const frameTime = frame.t - voiceLag;
       if (frame.m == null) {
         previousPoint = null;
         continue;
       }
       const target = activeAt(targets, frameTime) || nearestTargetByStart(targets, frameTime);
-      const cents = err(frame.m, target.m);
-      const point = [xOf(frameTime), yOf(target.m + cents / 100)];
+      const off = cents(frame.m, target.m);
+      const rawY = yOf(frame.m);
+      const y = Math.max(4, Math.min(height - 4, rawY));
+      edge = rawY < 4 ? 1 : rawY > height - 4 ? -1 : 0;
+      edgeX = xOf(frameTime);
+      const point = [edgeX, y];
       if (previousPoint) {
-        context.strokeStyle = Math.abs(cents) <= 25 ? colours.on : Math.abs(cents) <= 50 ? colours.near : colours.far;
+        context.strokeStyle = Math.abs(off) <= 25 ? colours.on : Math.abs(off) <= 50 ? colours.near : colours.far;
         context.beginPath();
         context.moveTo(...previousPoint);
         context.lineTo(...point);
         context.stroke();
       }
       previousPoint = point;
+    }
+    if (edge) {
+      // A small triangle on the edge, pointing the way the voice went off the picture.
+      const tipY = edge > 0 ? 2 : height - 2;
+      const baseY = edge > 0 ? 12 : height - 12;
+      context.fillStyle = colours.far;
+      context.beginPath();
+      context.moveTo(edgeX, tipY);
+      context.lineTo(edgeX - 7, baseY);
+      context.lineTo(edgeX + 7, baseY);
+      context.closePath();
+      context.fill();
     }
 
     // The "now" line.

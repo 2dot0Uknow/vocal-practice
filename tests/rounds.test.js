@@ -107,3 +107,32 @@ for (const [label, exercise] of EXERCISES) {
     }
   });
 }
+
+// Robustness fix (PR 6): a one-note pattern ("1~", a sustain drill) plans, places, scores and reports like any other.
+import { summarizeSession, scoreNotes } from '../js/scoring.js';
+import { singerFrames } from './helpers/signals.js';
+
+test('a one-note held pattern plans one note per round and rootsOf works as usual', () => {
+  const exercise = normEx({ name: 'Sustain', pat: '1~', vows: ['ah'], start: 48, end: 50, bpm: 120, hold: 3 });
+  const { rounds } = planRounds(exercise);
+  assert.equal(rounds.length, 3);
+  for (const round of rounds) {
+    assert.equal(round.notes.length, 1);
+    assert.equal(round.notes[0].m, round.root);
+    assert.ok(Math.abs(round.notes[0].end - round.notes[0].off - 1.5) < 1e-9, 'held 3 beats at 120 bpm');
+  }
+  assert.deepEqual(rounds.map((round) => round.root), [48, 49, 50]);
+});
+
+test('a one-note pattern scores: a steady voice lands every round, silence is missed, an octave off is off', () => {
+  const exercise = normEx({ name: 'Sustain', pat: '1~', vows: ['ah'], start: 48, end: 50, bpm: 120, hold: 3 });
+  const { targets } = buildSession(exercise, 0);
+  assert.equal(targets.length, 3);
+  const good = summarizeSession({ targets, frames: singerFrames(targets, { lag: 0, wobbleCents: 3 }), voiceLag: 0, previousRuns: [] });
+  assert.equal(good.pct, 100);
+  assert.equal(good.results.length, 3);
+  assert.ok(good.rows.length >= 3 && good.tips.length >= 1);
+  assert.ok(scoreNotes(targets, singerFrames(targets, { lag: 0, octaveShift: -12 })).every((r) => r.octaveOff));
+  const silent = summarizeSession({ targets, frames: singerFrames(targets, { lag: 0 }).map((f) => ({ t: f.t, m: null, tr: false })), voiceLag: 0, previousRuns: [] });
+  assert.equal(silent.heardCount, 0);
+});

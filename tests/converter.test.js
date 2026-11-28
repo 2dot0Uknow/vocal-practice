@@ -183,3 +183,11 @@ test('B7: spell is set from a typed accidental and left out otherwise', () => {
   assert.equal(parseLine('Hum, C3 - G3, 1 2 3 2 1', DEFAULT_RANGE).spell, undefined);
   assert.equal(parseLine('b3-5-#7 with zz', DEFAULT_RANGE).spell, undefined, 'accidentals on scale degrees are not note names');
 });
+
+test('a lone digit in prose is still not a pattern (the converter asks parsePat for two notes), although the editor accepts one', () => {
+  for (const line of ['Sustain 1 on ah', 'just 1']) {
+    const result = parseLine(line, DEFAULT_RANGE);
+    assert.equal(result.pat, '1-2-3-4-5-4-3-2-1~', line);
+    assert.equal(result.guessed, true, line);
+  }
+});

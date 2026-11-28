@@ -63,9 +63,10 @@ export const hzToMidi = (hz) => 69 + 12 * Math.log2(hz / 440);
 /**
  * Parse a pattern like "1-3-5-8~-5-3-1". Tokens are [b|#]degree[~], where ~ means "hold".
  * Returns [{deg, s, h}] (s = semitones above the round's root, h = held) or null when the
- * text is not a valid pattern of at least two notes.
+ * text is not a valid pattern of at least `minNotes` notes. One note is a valid pattern ("1~" is a sustain drill);
+ * the text converter asks for two (minNotes = 2), because a lone digit in prose is usually not a pattern.
  */
-export function parsePat(pattern) {
+export function parsePat(pattern, minNotes = 1) {
   const tokens = String(pattern).split(/[\s,\-]+/).filter(Boolean);
   const notes = [];
   for (const token of tokens) {
@@ -78,7 +79,7 @@ export function parsePat(pattern) {
     const semitones = MAJOR_SCALE_SEMITONES[(degree - 1) % 7] + 12 * Math.floor((degree - 1) / 7) + accidental;
     notes.push({ deg: degree, s: semitones, h: !!match[3] });
   }
-  return notes.length > 1 ? notes : null;
+  return notes.length >= minNotes && notes.length > 0 ? notes : null;
 }
 
 /**

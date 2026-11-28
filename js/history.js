@@ -19,12 +19,14 @@ const roundTo = (value, decimals) => {
  *   ring         0 to 1-ish (2 decimals), null when there were no tone notes
  *   topNote      MIDI number of the highest note landed within 50 cents, null if none
  *   rounds       rounds completed;  notes: notes in the run
+ *   sound        (A3) the run's main sound / vowel (the most common syllable), '' when it had none. Old entries lack it
+ *                and never count toward the tone baseline. clarity / ring are null for narrow-band input.
  *   ts, date     when (Date.now() and a short display date such as "Nov 27")
  */
 export function historyEntry(exercise, summary, now = new Date()) {
   const heard = summary.results.filter((result) => !result.miss);
   const landed = heard.filter((result) => Math.abs(result.med) <= 50);
-  const hasTone = summary.toneCount > 0;
+  const hasTone = summary.toneCount > 0 && !summary.toneHidden;
   return {
     name: exercise.name,
     ...(exercise.id ? { exId: exercise.id } : {}),
@@ -39,6 +41,7 @@ export function historyEntry(exercise, summary, now = new Date()) {
     topNote: landed.length ? Math.max(...landed.map((result) => result.m)) : null,
     rounds: new Set(summary.results.map((result) => result.round)).size,
     notes: summary.total,
+    sound: summary.sound ?? '',
   };
 }
 

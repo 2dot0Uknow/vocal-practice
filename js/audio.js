@@ -162,6 +162,15 @@ export function micInputLatency() {
   }
 }
 
+/** A3: the microphone track's own sample rate (Hz), or 0 when the browser does not say. 16000 or less means narrow-band (e.g. Bluetooth call mode). */
+export function micSampleRate() {
+  try {
+    return micStream.getAudioTracks()[0].getSettings().sampleRate || 0;
+  } catch (error) {
+    return 0;
+  }
+}
+
 /** The browser's estimate of the delay before played sound is heard, in seconds. */
 export const outputDelayEstimate = () => (context.outputLatency || 0) + (context.baseLatency || 0);
 
@@ -196,21 +205,32 @@ export function analysisWindow(trill) {
   return { samples: timeBuffer.subarray(2048), sampleRate: context.sampleRate };
 }
 
-/** Ratio of energy above 2 kHz to energy below it (up to 4 kHz): higher = brighter, "ringing" sound. */
+let lastHighBandRatio = 0;
+
+/**
+ * Ratio of energy above 2 kHz to energy below it (up to 4 kHz): higher = brighter, "ringing" sound.
+ * Side effect (A3): also works out, from the same spectrum, the energy above 4 kHz over the energy below it
+ * (see highBandRatio), to tell narrow-band input from a normal mic.
+ */
 export function brightness() {
   analyser.getFloatFrequencyData(spectrumBuffer);
   const binWidth = context.sampleRate / analyser.fftSize;
   let low = 0;
   let high = 0;
+  let above = 0;
   for (let i = 2; i < spectrumBuffer.length; i++) {
     const frequency = i * binWidth;
-    if (frequency > 4000) break;
     const power = 10 ** (spectrumBuffer[i] / 10);
-    if (frequency < 2000) low += power;
+    if (frequency > 4000) above += power;
+    else if (frequency < 2000) low += power;
     else high += power;
   }
+  lastHighBandRatio = low + high ? above / (low + high) : 0;
   return low ? high / low : 0;
 }
+
+/** Energy above 4 kHz over energy below it, from the last brightness() call. Near zero for narrow-band input. */
+export const highBandRatio = () => lastHighBandRatio;
 
 /** Release everything: piano, microphone and the audio context. */
 export function closeAudio() {

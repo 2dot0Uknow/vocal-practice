@@ -6,20 +6,26 @@ import { state } from '../state.js';
 import { store, KEYS } from '../store.js';
 import { noteName, hzToMidi, spellingOf } from '../music.js';
 import { planRounds, describeExercise } from '../exercise.js';
+import { parsePat } from '../music.js';
 import { detect } from '../pitch.js';
-import { err, strictAt, estimateLag, activeAt, median, summarizeSession } from '../scoring.js';
+import { cents, strictAt, estimateLag, activeAt, median, summarizeSession } from '../scoring.js';
+import { createCalibration, rms, DEFAULT_GATE } from '../calibration.js';
+import { isNarrowBand } from '../tone.js';
+import { isDebugMode, buildDebugSession } from '../debug.js';
 import { createFrameStore, nextTargetAfter } from '../timeindex.js';
 import { createRun } from '../run.js';
 import { createScheduler } from '../scheduler.js';
 import {
   ensureAudio, setPianoVolume, openMic, micInputLatency, outputDelayEstimate, getAudioContext,
   resetTrillMode, setTrillMode, captureMicSamples, analysisWindow, brightness, playPianoNote, cancelPianoNote, closeAudio,
+  micSampleRate, highBandRatio,
 } from '../audio.js';
 import { navTo, goHome, currentScreen } from './navigation.js';
 import { createSessionMachine, decideEnd, reportTitle, MIC_MESSAGES } from '../session.js';
 import { acquireWakeLock, releaseWakeLock } from '../wakelock.js';
 import { createRoll } from './roll.js';
 import { showReport } from './report.js';
+import { openEditor } from './editor.js';
 import { previousRunsOf } from '../history.js';
 
 let currentExercise = null;
@@ -46,6 +52,16 @@ let inputLatency = 0.02;
 let voiceLag = store.get(KEYS.voiceLag, 0.15);
 let lastLagEstimateAt = 0;
 let recentTrillPitches = [];    // trill mode: pitches from the last ~0.15 s, for smoothing
+// A5 / A2: what the first cue chord (nobody singing) tells us. See calibration.js.
+let calibration = null;         // collects the first chord's readings; null once it has answered (or before a session)
+let gate = DEFAULT_GATE;        // pitch gate for non-trill listening: 3 x the noise floor once measured, else today's 0.012
+let pianoLeak = false;          // the piano was heard through the mic during the first chord
+// A3: narrow-band detection (Bluetooth call mode etc.): the mic track's sample rate, and the spectrum's high-band readings.
+let micRate = 0;
+let highBandRatios = [];
+// Trill mode keeps its own fixed gate: its mic chain is filtered and boosted 2.5x, so the floor measured on the plain
+// chain does not apply, and 0.004 is already the lowest gate calibration may choose.
+const TRILL_GATE = 0.004;
 
 let roll = null;
 
@@ -73,22 +89,29 @@ export function refreshRoll() {
 /** Put the practice screen back to its idle look for the current exercise. */
 function resetPracticeView() {
   // Idle preview: the first rounds laid out from time 0, as a run would place them.
-  run = createRun(planRounds(currentExercise));
-  run.start(0);
-  run.advance(0, PLACE_AHEAD);
+  try {
+    run = createRun(planRounds(currentExercise));
+    run.start(0);
+    run.advance(0, PLACE_AHEAD);
+  } catch (error) {
+    // A saved exercise whose pattern does not parse: show an empty roll; Start explains (see startSession).
+    console.warn('Could not lay out this exercise', error);
+    run = null;
+  }
   frameStore.clear();
   holdView = null;
   $('goBtn').textContent = 'Start';
   $('goBtn').disabled = false;
   updateControls();
-  $('rSyl').textContent = run.targets()[0]?.syl || '–';
-  roll.fit(run.targets(), 0, false);
+  $('rSyl').textContent = run?.targets()[0]?.syl || '–';
+  if (run) roll.fit(run.targets(), 0, false);
   drawRoll();
 }
 
 export function openPractice(exercise) {
   abortSession();
   hideMicCard();
+  hideLeakCard();
   currentExercise = exercise;
   navTo('prac');
   $('pName').textContent = exercise.name + (state.queue.length ? `  ·  ${state.queue.length} more after this` : '');
@@ -98,6 +121,16 @@ export function openPractice(exercise) {
 
 function showMicCard(reason) {
   $('micCardMsg').textContent = MIC_MESSAGES[reason] || MIC_MESSAGES.other;
+  $('micRetry').hidden = false;
+  $('editFix').hidden = true;
+  $('micCard').hidden = false;
+}
+
+/** The exercise itself could not be started (a pattern that does not parse): say so, and offer the editor instead of Try again. */
+function showExerciseCard() {
+  $('micCardMsg').textContent = parsePat(currentExercise.pat) ? "I couldn't start this exercise. Tap Edit to check it." : "This exercise's pattern needs fixing. Tap Edit to check it.";
+  $('micRetry').hidden = true;
+  $('editFix').hidden = false;
   $('micCard').hidden = false;
 }
 
@@ -105,11 +138,28 @@ function hideMicCard() {
   $('micCard').hidden = true;
 }
 
+function hideLeakCard() {
+  $('leakCard').hidden = true;
+}
+
 async function startSession() {
   if (!session.can('starting')) return;   // already starting, running or stopping: a second tap does nothing
   session.go('starting');
   const token = ++sessionToken;
+  try {
+    await beginSession(token);
+  } catch (error) {
+    // Anything unexpected (e.g. a pattern that does not parse): let go of mic and audio, back to idle, and explain.
+    console.warn('Could not start the session', error);
+    if (token !== sessionToken) return;
+    abortSession();
+    showExerciseCard();
+  }
+}
+
+async function beginSession(token) {
   hideMicCard();
+  hideLeakCard();
   $('goBtn').disabled = true;
   $('goBtn').textContent = 'Starting…';
   ensureAudio();
@@ -130,6 +180,10 @@ async function startSession() {
     outputLatency = Math.min(0.5, estimate > 0.01 ? estimate : 0.1);
   }
   inputLatency = micInputLatency();
+  micRate = micSampleRate();
+  highBandRatios = [];
+  gate = DEFAULT_GATE;
+  pianoLeak = false;
   showPictureDelay();
   // Start 0.6 s from now so the first chord is scheduled in good time.
   const context = getAudioContext();
@@ -146,7 +200,10 @@ async function startSession() {
     cancel: cancelPianoNote,
     onTick: schedulerTick,
   });
-  scheduler.add(run.start(context.currentTime + 0.6).plays);
+  const firstPlays = run.start(context.currentTime + 0.6).plays;
+  scheduler.add(firstPlays);
+  // The first play is the first round's cue chord: nobody should be singing then (A5, A2).
+  calibration = createCalibration(firstPlays[0]);
   session.go('running');
   acquireWakeLock();
   $('goBtn').disabled = false;
@@ -302,17 +359,36 @@ function endSession(reason) {
     resetPracticeView();                            // under one round: back to a quiet, idle practice screen
     return;
   }
+  const narrowBand = isNarrowBand({ sampleRate: micRate, highBandRatios });
+  const lagUsed = voiceLag;
   const summary = summarizeSession({
     targets: decision.scoredTargets,
     frames: recorded,
     voiceLag,
     previousRuns: decision.partial ? [] : previousRunsOf(store.get(KEYS.history, []), exercise),
     partial: decision.partial,
+    narrowBand,
+    pianoLeak,
   });
   // The learned voice lag is calibration, not progress, so it is kept even for a stopped run.
   voiceLag = summary.voiceLag;
   store.set(KEYS.voiceLag, voiceLag);
-  showReport(exercise, summary, { title: reportTitle(exercise.name, decision), save: decision.save });
+  // A7: with ?debug=1 the report offers the session as a JSON download.
+  const debugSession = isDebugMode(location.search)
+    ? buildDebugSession({
+      exercise,
+      targets: decision.scoredTargets,
+      frames: recorded,
+      voiceLag: lagUsed,
+      outputLatency,
+      gate,
+      pianoLeak,
+      narrowBand,
+      micSampleRate: micRate,
+      userAgent: navigator.userAgent,
+    })
+    : null;
+  showReport(exercise, summary, { title: reportTitle(exercise.name, decision), save: decision.save, debugSession });
 }
 
 /**
@@ -332,14 +408,16 @@ function analyse() {
   const trill = !!(target && target.trill);
   setTrillMode(trill);
   const { samples, sampleRate } = analysisWindow(trill);
+  if (calibration) calibrate(now, samples, sampleRate, trill);
   const pitch = trill
-    ? detect(samples, sampleRate, { gate: 0.004, min: 0.4 })
-    : detect(samples, sampleRate);
+    ? detect(samples, sampleRate, { gate: TRILL_GATE, min: 0.4 })
+    : detect(samples, sampleRate, { gate, min: 0.6 });
   const frame = { t: now - inputLatency, m: null, tr: trill };
   if (pitch) {
     frame.m = hzToMidi(pitch.f);
     frame.c = pitch.c;
     frame.ring = brightness();
+    if (!trill) highBandRatios.push(highBandRatio());   // trill mode filters above 1.1 kHz on purpose: not a sign of a narrow mic
   }
   if (trill) {
     // Smooth over the flutter: median of the last ~0.15 s, and bridge short dropouts.
@@ -364,6 +442,26 @@ function analyse() {
   latest = { target, frame, judgedTarget };
 }
 
+/**
+ * A5 + A2, during the first cue chord (nobody should be singing): remember how loud the room is and what pitch the
+ * detector hears (with a gentler gate than singing uses, since a leaking piano is quiet). When the chord is over,
+ * adopt the new pitch gate and, if the piano is reaching the mic, say so right away.
+ */
+function calibrate(now, samples, sampleRate, trill) {
+  if (calibration.collecting(now)) {
+    const heard = detect(samples, sampleRate, { gate: 0.002, min: 0.6 });
+    // Trill mode's boosted, filtered chain would give a floor that means something else: leave it out.
+    calibration.add(now, trill ? null : rms(samples), { m: heard ? hzToMidi(heard.f) : null, c: heard ? heard.c : 0 });
+    return;
+  }
+  const answer = calibration.finish(now);
+  if (!answer) return;
+  calibration = null;
+  gate = answer.gate;
+  pianoLeak = answer.pianoLeak;
+  if (pianoLeak) $('leakCard').hidden = false;
+}
+
 /** One animation frame: update the readouts from the latest analysis and draw the roll. */
 function loop() {
   if (!isRunning()) return;
@@ -374,10 +472,11 @@ function loop() {
   if (frame && frame.m != null) {
     $('rNote').textContent = noteName(frame.m, spelling);
     if (judgedTarget) {
-      const cents = err(frame.m, judgedTarget.m);
-      $('rCents').textContent = (cents > 0 ? '+' : '') + Math.round(cents) + ' cents';
+      // A1: as sung, no octave folding (an octave away reads +-1200 and the needle sits at the end of the meter).
+      const off = cents(frame.m, judgedTarget.m);
+      $('rCents').textContent = (off > 0 ? '+' : '') + Math.round(off) + ' cents';
       // The needle spans +-100 cents across the meter.
-      $('needle').style.left = `calc(${50 + Math.max(-50, Math.min(50, cents / 2))}% - 2px)`;
+      $('needle').style.left = `calc(${50 + Math.max(-50, Math.min(50, off / 2))}% - 2px)`;
     }
   }
   updateControls();
@@ -413,6 +512,8 @@ export function initPractice() {
   $('repeatBtn').onclick = againRound;
   $('skipBtn').onclick = skipRound;
   $('micRetry').onclick = startSession;
+  $('editFix').onclick = () => openEditor(currentExercise);
+  $('leakDismiss').onclick = hideLeakCard;
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') {
       if (session.state === 'starting' || isRunning()) endSession('hidden');

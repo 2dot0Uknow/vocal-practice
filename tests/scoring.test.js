@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { err, strictAt, estimateLag, scoreNotes } from '../js/scoring.js';
+import { err, cents, strictAt, estimateLag, scoreNotes } from '../js/scoring.js';
 import { normEx, buildSession } from '../js/exercise.js';
 import { fixture, assertSame } from './helpers/fixture.js';
 import { singerFrames } from './helpers/signals.js';
@@ -11,11 +11,11 @@ test('err matches the original (signed cents, folded to the nearest octave)', ()
   for (const { m, tm, expected } of fixture.err) assertSame(err(m, tm), expected, `${m} vs ${tm}`);
 });
 
-test('err: readable examples', () => {
+test('err: readable examples (err itself still folds; A1 only stopped scoring with it)', () => {
   assert.equal(err(60, 60), 0);
   assert.equal(Math.round(err(60.3, 60)), 30);
   assert.equal(Math.round(err(59.5, 60)), -50);
-  // Characterization: an octave away counts as perfect today (a later PR changes this on purpose).
+  // err still folds (it is used only to decide which neighbouring note a frame is about); scoring uses cents() instead.
   assert.equal(err(48, 60), 0);
   assert.equal(err(72.1, 60).toFixed(6), '10.000000');
 });
@@ -27,15 +27,22 @@ test('strictAt finds the note sounding at a time, with no grace period', () => {
   }
 });
 
+// A1: every singer whose errors are under 600 cents must score exactly as before (same lag, same notes). The only new
+// field is `octaveOff` (false for all of them). The octaveBelow singer is no longer "perfect": see the A1 tests below.
+const withoutOctaveOff = (results) => results.map(({ octaveOff, ...rest }) => rest);
+
 for (const [key, entry] of Object.entries(fixture.sessions)) {
   test(`estimateLag and scoreNotes match the original on synthetic singers: ${key}`, () => {
     const { targets } = buildSession(normEx(SESSION_EXERCISES[key]), 0);
     for (const [name, scenario] of Object.entries(SINGER_SCENARIOS)) {
+      if (name === 'octaveBelow') continue;
       const frames = singerFrames(targets, scenario);
       const expected = entry.scenarios[name];
       assertSame(estimateLag(frames, targets), expected.estimateLag, `${key}/${name} lag`);
       const shifted = frames.map((f) => ({ ...f, t: f.t - scenario.lag }));
-      assertSame(scoreNotes(targets, shifted), expected.scoreNotes, `${key}/${name} notes`);
+      const rescored = scoreNotes(targets, shifted);
+      assert.ok(rescored.every((r) => r.miss || r.octaveOff === false), `${key}/${name}: nothing is octave-off`);
+      assertSame(withoutOctaveOff(rescored), expected.scoreNotes, `${key}/${name} notes`);
     }
     assertSame(estimateLag(singerFrames(targets, { step: 2 }), targets), entry.fewFrames.estimateLag, 'few frames');
   });
@@ -56,8 +63,3 @@ test('scoreNotes: a steady in-tune singer lands every note; a sparse one is mark
   assert.ok(sparse.some((r) => r.miss));
 });
 
-test('scoreNotes CHARACTERIZATION: a voice one octave below every target still scores as perfect today', () => {
-  const { targets } = buildSession(normEx(SESSION_EXERCISES.scale), 0);
-  const results = scoreNotes(targets, singerFrames(targets, { lag: 0, octaveShift: -12, wobbleCents: 2 }));
-  assert.ok(results.every((r) => !r.miss && Math.abs(r.med) <= 25));
-});

@@ -23,15 +23,20 @@ export function noteStripsHTML(results, exercise) {
   return Object.values(groups).map((strip) => `<div class="strip"><span class="rl">Round ${strip[0].round + 1}${exercise.vows.length > 1 ? ' · ' + esc(exercise.vows[strip[0].pass]) : ''}</span>${strip.map((result) => {
     const cents = result.miss ? null : Math.abs(result.med);
     const background = result.miss ? '' : cents <= 25 ? 'var(--on)' : cents <= 50 ? 'var(--near)' : 'var(--far)';
-    return `<div class="cell${result.miss ? ' miss' : ''}" style="${background ? 'background:' + background : ''}"><b>${noteName(result.m, spellingOf(exercise))}</b>${result.miss ? '—' : (result.med > 0 ? '+' : '') + Math.round(result.med)}</div>`;
+    // A1: a note about an octave from the piano shows as "8vb" / "8va" instead of a number like -1200.
+    const shown = result.miss ? '—' : result.octaveOff ? (result.med < 0 ? '8vb' : '8va') : (result.med > 0 ? '+' : '') + Math.round(result.med);
+    return `<div class="cell${result.miss ? ' miss' : ''}" style="${background ? 'background:' + background : ''}"><b>${noteName(result.m, spellingOf(exercise))}</b>${shown}</div>`;
   }).join('')}</div>`).join('');
 }
+
+let debugUrl = null;   // object URL of the current debug download, released when the next report opens
 
 /**
  * Fill the report screen from a summary, save the run if anything was heard, and open it.
  * options.title replaces the heading; options.save = false shows the report without saving it (stopped runs).
+ * options.debugSession (A7, only with ?debug=1): the session's data, offered as a JSON download.
  */
-export function showReport(exercise, summary, { title = exercise.name, save = true } = {}) {
+export function showReport(exercise, summary, { title = exercise.name, save = true, debugSession = null } = {}) {
   $('repTitle').textContent = title;
   $('sPct').textContent = summary.pct + '%';
   $('sSub').textContent = summary.subtitle;
@@ -45,6 +50,17 @@ export function showReport(exercise, summary, { title = exercise.name, save = tr
     state.historyShown = 3;
   }
   $('trNote').hidden = !summary.hasTrillNotes;
+  $('toneNote').hidden = summary.toneHidden;
+  $('leakNote').textContent = summary.leakNote;
+  $('leakNote').hidden = !summary.leakNote;
+  if (debugUrl) URL.revokeObjectURL(debugUrl);
+  debugUrl = null;
+  $('debugRow').hidden = !debugSession;
+  if (debugSession) {
+    debugUrl = URL.createObjectURL(new Blob([JSON.stringify(debugSession)], { type: 'application/json' }));
+    $('debugLink').href = debugUrl;
+    $('debugLink').download = `vocal-practice-session-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.json`;
+  }
   $('nextBtn').hidden = !state.queue.length;
   if (state.queue.length) $('nextBtn').textContent = 'Next: ' + state.queue[0].name;
   navTo('rep');
