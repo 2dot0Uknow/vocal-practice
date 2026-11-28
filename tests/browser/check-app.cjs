@@ -9,6 +9,7 @@ const { runSessionChecks } = require('./session-checks.cjs');
 const { runConverterChecks } = require('./converter-checks.cjs');
 const { runHistoryChecks } = require('./history-checks.cjs');
 const { runFlowChecks } = require('./flow-checks.cjs');
+const { runScoringChecks } = require('./scoring-checks.cjs');
 const { runPerfChecks } = require('./perf-checks.cjs');
 
 (async () => {
@@ -43,6 +44,11 @@ const { runPerfChecks } = require('./perf-checks.cjs');
   if (!args.includes('--no-flow')) {
     const flow = await runFlowChecks(baseUrl);
     errors.push(...flow.errors);
+  }
+  // PR 6: octave scoring, piano-leak notice, narrow-band tone rows, ?debug=1 download (skip with --no-scoring).
+  if (!args.includes('--no-scoring')) {
+    const scoring = await runScoringChecks(baseUrl);
+    errors.push(...scoring.errors);
   }
   // PR 5: the two-minute 24-round performance run (only with --perf; also runnable alone: node tests/browser/perf-checks.cjs).
   if (args.includes('--perf')) {

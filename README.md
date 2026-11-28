@@ -47,6 +47,7 @@ node tests/browser/check-app.cjs                  # tour every screen; fails on 
 node tests/browser/session-checks.cjs            # start/stop, double tap, Back, hidden page, mic failure, picture-delay reset (also run by check-app)
 node tests/browser/converter-checks.cjs          # (run by check-app) converter lines, guess notes, Eb spelling, Save/Convert feedback
 node tests/browser/history-checks.cjs            # (run by check-app) schema-1 data migrates to 2, new history fields, rename keeps history
+node tests/browser/scoring-checks.cjs         # (run by check-app) octave-off scoring, piano-leak notice, narrow-band tone rows, ?debug=1 download
 node tests/browser/flow-checks.cjs               # (run by check-app) Pause / Resume, Again, Skip, skip the last round; which piano notes were scheduled and cancelled
 node tests/browser/perf-checks.cjs               # (check-app --perf) plays a 24-round arpeggio to the end (~2 min): oscillators created vs alive, analyses per second, report delay
 node tests/browser/check-app.cjs --shots out/     # same, and save screenshots into out/
@@ -71,7 +72,10 @@ js/scheduler.js       look-ahead piano scheduling (~2 s ahead, every ~25 ms) wit
 js/timeindex.js      binary-search helpers and the frame store: frames and targets are time-ordered, so drawing and scoring touch only their window
 js/converter.js       parseLine / parseAll: coach's text -> exercise
 js/pitch.js           detect: McLeod pitch detection on a window of samples
-js/scoring.js         err, strictAt, activeAt, estimateLag, scoreNotes, summarizeSession (all of the report's numbers and wording)
+js/scoring.js         cents (as sung, no octave folding), err (folded; only for telling neighbouring notes apart), dropOctaveGlitches, strictAt, activeAt, estimateLag, scoreNotes, summarizeSession (all of the report's numbers and wording)
+js/tone.js            tone as a trend against your own earlier runs of the same exercise + sound; narrow-band input detection (pure)
+js/calibration.js     first-chord measurements: noise floor -> pitch gate, piano-leak detection (pure)
+js/debug.js           the ?debug=1 session download: what goes in the file, and reading one back (pure)
 js/session.js         session state machine, decideEnd (what stopping means), mic-failure wording (pure)
 js/wakelock.js        Screen Wake Lock while a session runs
 js/audio.js           audio context, synthesised piano, microphone chain, trill mode
@@ -118,11 +122,35 @@ A history entry:
   clarity: 0.91,         // 0 to 1; null when the run had no tone notes (pure lip trill)
   ring: 0.12,            // null likewise
   topNote: 64,           // MIDI of the highest note landed within 50 cents; null if none
-  rounds: 5, notes: 40 } // rounds completed, notes in the run
+  rounds: 5, notes: 40,  // rounds completed, notes in the run
+  sound: "ah" }          // the run's main sound (most common syllable; "" if none). Absent on older entries
 ```
+
+Scoring changed in a later version (no octave folding, see "Scoring notes"), so `pct` of old and new runs is not perfectly comparable. `sound` is optional and needs no migration; `clarity` / `ring` are `null` for a run on a narrow-band mic.
 
 Entries from before schema 2 have only `name, pct, ts, date` (plus `exId` once migrated). Everything that reads history
 must cope with the other fields being absent.
+
+## Scoring notes
+
+- **No octave folding.** The singer is expected to sing in the piano's octave. A note is scored by its exact distance in cents
+  (`cents()`); a voice about an octave away (1200 +/- 150 cents) is "off" (kept, large cents value, shown as 8vb / 8va) and
+  gets a gentle tip when most notes are like that. Other frames more than 450 cents away are still left out of a note.
+  A single frame (or two) an octave from agreeing neighbours is a detector glitch and is dropped before scoring and drawing.
+- **Noise floor.** During the first cue chord the median RMS of the mic is measured; the pitch gate is 3 x that, kept between
+  0.004 and 0.012 (today's value). Trill mode keeps its own fixed gate of 0.004: its mic chain is filtered and boosted, so the floor does not carry over.
+- **Piano leak.** If, in the first chord, a confident pitch within 50 cents of a chord note (any octave) shows up in more than 40% of
+  the analysed frames, a dismissible notice appears and the report says the score may be generous. Warning only.
+- **Tone rows** (Clear tone, Ring) are a trend against the average of the newest 10 saved runs of the same exercise and the same
+  `sound`, once there are 3. Clarity: more than 0.025 above / below is "clearer" / "airier". Ring: more than 25% (at least 0.015) of the average above / below is "brighter" / "softer".
+  Before that: "Getting a baseline (n of 3)" and no tone tips. Narrow-band input (track sample rate 16 kHz or lower, or a median
+  above-4-kHz / below-4-kHz energy ratio under 1e-5) hides the rows, tips and praise.
+
+## Debug downloads and session fixtures
+
+Open the app with `?debug=1` on the end of the address: the report then shows "Download session data", a JSON file with the
+exercise, targets, pitch frames, voice lag, output latency, pitch gate, piano-leak flag, user agent and app version.
+Put such files in `tests/fixtures/sessions/` (see the README there); `tests/sessions.test.js` runs each through `summarizeSession`.
 
 ## Migrations
 
