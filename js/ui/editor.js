@@ -61,8 +61,8 @@ export function stopPreview() {
 /** Open the screen to add exercises (exercise = null) or to edit one. */
 export function openEditor(exercise) {
   editMode = !!exercise;
-  navTo('add');
   $('addTitle').textContent = exercise ? 'Edit exercise' : "Add your coach's exercises";
+  navTo('add', exercise ? `Edit exercise · Vocal Practice` : undefined);
   $('inBox').hidden = !!exercise;
   $('dStart').value = noteName(state.defaultRange.start, 'auto');
   $('dEnd').value = noteName(state.defaultRange.end, 'auto');
@@ -72,28 +72,32 @@ export function openEditor(exercise) {
   renderCards();
 }
 
-const selectHTML = (key, options, value) => `<select data-k="${key}">${options.map(([optionValue, text]) => `<option value="${optionValue}"${String(optionValue) == String(value) ? ' selected' : ''}>${text}</option>`).join('')}</select>`;
+// V3: every field has a <label for> and an id that is unique per card (ed0-name, ed1-name, ...).
+const fieldId = (index, key) => `ed${index}-${key}`;
+
+const selectHTML = (index, key, options, value) => `<select id="${fieldId(index, key)}" data-k="${key}">${options.map(([optionValue, text]) => `<option value="${optionValue}"${String(optionValue) == String(value) ? ' selected' : ''}>${text}</option>`).join('')}</select>`;
 
 function cardHTML(exercise, index) {
   const info = cardInfo[index] || {};
   const spelling = spellingOf(exercise);
-  return `<div class="card ed" data-i="${index}">
-  <h3>${editMode ? '' : (index + 1) + '. '}${esc(exercise.name)}</h3>
+  const id = (key) => fieldId(index, key);
+  return `<div class="card ed" data-i="${index}" role="group" aria-labelledby="${id('title')}">
+  <h3 id="${id('title')}">${editMode ? '' : (index + 1) + '. '}${esc(exercise.name)}</h3>
   ${info.original ? `<p class="from">From your notes: “${esc(info.original)}”</p>` : ''}
   ${info.guessNote ? `<p class="guess" data-guess>${esc(info.guessNote)}</p>` : ''}
-  <label>Name</label><input data-k="name" value="${esc(exercise.name)}">
-  <label>Pattern: scale degrees, ~ means hold</label><input data-k="pat" value="${esc(exercise.pat)}">
+  <label for="${id('name')}">Name</label><input id="${id('name')}" data-k="name" value="${esc(exercise.name)}">
+  <label for="${id('pat')}">Pattern: scale degrees, ~ means hold</label><input id="${id('pat')}" data-k="pat" value="${esc(exercise.pat)}">
   <div class="grid">
-    <div><label>Sounds (commas = one pass each)</label><input data-k="vows" value="${esc(exercise.vows.join(', '))}" placeholder="ah"></div>
-    <div><label>Sound on root notes (optional)</label><input data-k="rootVow" value="${esc(exercise.rootVow)}"></div>
-    <div><label>From</label><input data-k="start" value="${noteName(exercise.start, spelling)}" data-shown="${noteName(exercise.start, spelling)}"></div>
-    <div><label>To</label><input data-k="end" value="${noteName(exercise.end, spelling)}" data-shown="${noteName(exercise.end, spelling)}"></div>
-    <div><label>From–To means</label>${selectHTML('top', [[0, 'Starting notes'], [1, 'Whole range sung']], exercise.top ? 1 : 0)}</div>
-    <div><label>Move each round</label>${selectHTML('step', [[1, 'Half step'], [2, 'Whole step']], exercise.step)}</div>
-    <div><label>Tempo (bpm)</label><input data-k="bpm" type="number" inputmode="numeric" min="30" max="200" value="${exercise.bpm}"></div>
-    <div><label>Held notes (~) last</label>${selectHTML('hold', [[1, '1 beat'], [2, '2 beats'], [3, '3 beats'], [4, '4 beats']], exercise.hold)}</div>
+    <div><label for="${id('vows')}">Sounds (commas = one pass each)</label><input id="${id('vows')}" data-k="vows" value="${esc(exercise.vows.join(', '))}" placeholder="ah"></div>
+    <div><label for="${id('rootVow')}">Sound on root notes (optional)</label><input id="${id('rootVow')}" data-k="rootVow" value="${esc(exercise.rootVow)}"></div>
+    <div><label for="${id('start')}">From</label><input id="${id('start')}" data-k="start" value="${noteName(exercise.start, spelling)}" data-shown="${noteName(exercise.start, spelling)}"></div>
+    <div><label for="${id('end')}">To</label><input id="${id('end')}" data-k="end" value="${noteName(exercise.end, spelling)}" data-shown="${noteName(exercise.end, spelling)}"></div>
+    <div><label for="${id('top')}">From–To means</label>${selectHTML(index, 'top', [[0, 'Starting notes'], [1, 'Whole range sung']], exercise.top ? 1 : 0)}</div>
+    <div><label for="${id('step')}">Move each round</label>${selectHTML(index, 'step', [[1, 'Half step'], [2, 'Whole step']], exercise.step)}</div>
+    <div><label for="${id('bpm')}">Tempo (bpm)</label><input id="${id('bpm')}" data-k="bpm" type="number" inputmode="numeric" min="30" max="200" value="${exercise.bpm}"></div>
+    <div><label for="${id('hold')}">Held notes (~) last</label>${selectHTML(index, 'hold', [[1, '1 beat'], [2, '2 beats'], [3, '3 beats'], [4, '4 beats']], exercise.hold)}</div>
   </div>
-  <label class="chk"><input type="checkbox" data-k="both"${exercise.both ? ' checked' : ''}> Come back down after reaching the top</label>
+  <label class="chk" for="${id('both')}"><input id="${id('both')}" type="checkbox" data-k="both"${exercise.both ? ' checked' : ''}> Come back down after reaching the top</label>
   <p class="note sum"></p>
   <div class="row"><button data-a="hear">Hear one round</button>${editMode ? '<button class="ghost" data-a="dup">Duplicate</button>' : ''}<button class="ghost" data-a="del">${editMode ? 'Delete' : 'Remove'}</button></div></div>`;
 }

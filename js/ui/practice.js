@@ -21,7 +21,7 @@ import {
   resetTrillMode, setTrillMode, captureMicSamples, analysisWindow, brightness, playPianoNote, cancelPianoNote, closeAudio,
   micSampleRate, highBandRatio, loadPianoSamples, pianoReady,
 } from '../audio.js';
-import { navTo, goHome, currentScreen } from './navigation.js';
+import { navTo, goHome, currentScreen, pageTitle } from './navigation.js';
 import { createSessionMachine, decideEnd, reportTitle, MIC_MESSAGES } from '../session.js';
 import { acquireWakeLock, releaseWakeLock } from '../wakelock.js';
 import { createRoll } from './roll.js';
@@ -153,9 +153,10 @@ export function openPractice(exercise) {
   hideMicCard();
   hideLeakCard();
   currentExercise = exercise;
-  navTo('prac');
-  loadPianoSamples();   // F5: the recorded piano loads while the screen is open (the synth plays until it is ready)
+  // The heading is filled in before the screen opens, because opening it moves focus there (V4).
   $('pName').textContent = exercise.name + (state.set ? `  ·  ${setLabel(state.set.position, state.set.total)}` : '');
+  navTo('prac', pageTitle('prac', exercise.name));
+  loadPianoSamples();   // F5: the recorded piano loads while the screen is open (the synth plays until it is ready)
   $('pInfo').textContent = describeExercise(exercise);
   resetPracticeView();
 }

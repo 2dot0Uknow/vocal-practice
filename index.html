@@ -2,7 +2,11 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#fdfbf7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f1828" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="favicon-32.png" type="image/png" sizes="32x32">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>Vocal Practice</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -11,77 +15,78 @@
 </head>
 <body>
 <div class="wrap">
-  <div class="top"><span class="dot"></span><div style="flex:1"><h1>Vocal Practice</h1><p class="sub">Your coach's exercises, at your own pace</p></div>
-    <button class="ghost" id="themeBtn" aria-label="Change colour theme" style="flex:none;min-height:40px;padding:0 12px;font-size:14px"></button></div>
+  <div class="top"><span class="dot" aria-hidden="true"></span><div class="grow"><h1 id="libTitle" tabindex="-1">Vocal Practice</h1><p class="sub">Your coach's exercises, at your own pace</p></div>
+    <button class="ghost themebtn" id="themeBtn" aria-label="Change colour theme"></button></div>
   <div id="toast" class="toast" role="status" hidden><span id="toastMsg"></span><button class="ghost" id="toastUndo" hidden>Undo</button></div>
 
   <section id="lib" class="on">
     <div id="micWarn" class="card warn" hidden></div>
     <div id="onboard" class="card onboard" hidden>
       <h2>What's a comfortable range for you?</h2>
-      <p class="note" style="margin-top:0">Pick the lowest note, and the highest note you'd like a pattern to start on. The sample exercises will fit it. You can change it any time.</p>
+      <p class="note flush">Pick the lowest note, and the highest note you'd like a pattern to start on. The sample exercises will fit it. You can change it any time.</p>
       <div class="grid"><div><label for="obLow">Lowest note</label><input id="obLow" value="C3" autocomplete="off"></div><div><label for="obHigh">Highest starting note</label><input id="obHigh" value="G3" autocomplete="off"></div></div>
       <p class="msg" id="obMsg" role="status" hidden></p>
-      <div class="row" style="margin-top:10px"><button class="pri" id="obSave">Save</button><button class="ghost" id="obSkip">Not now</button></div>
+      <div class="row mt-s3"><button class="pri" id="obSave">Save</button><button class="ghost" id="obSkip">Not now</button></div>
     </div>
     <div class="card journey" id="journey"></div>
     <div class="card warn"><b>Tip:</b> headphones help the app hear just your voice, so your feedback stays accurate.</div>
-    <div class="row" style="margin-bottom:12px"><button class="pri" id="newBtn">+ Add exercises</button><button id="allBtn">Practice all in order</button></div>
+    <div class="row mb-s3"><button class="pri" id="newBtn">+ Add exercises</button><button id="allBtn">Practice all in order</button></div>
     <div class="listbar"><h2 id="listTitle">Your exercises</h2><button class="ghost small" id="reorderBtn" aria-pressed="false" hidden>Reorder</button></div>
     <p class="note" id="reorderNote" role="status" hidden></p>
     <div id="list"></div>
-    <h2 style="margin-top:24px">Your journey so far</h2>
+    <h2 class="mt-s5">Your journey so far</h2>
     <div id="hist" class="hist"></div>
-    <div class="row" style="margin-top:10px"><button class="ghost" id="moreBtn" hidden>Load more</button></div>
+    <div class="row mt-s3"><button class="ghost" id="moreBtn" hidden>Load more</button></div>
   </section>
 
   <section id="add">
-    <h2 id="addTitle">Add your coach's exercises</h2>
+    <h2 id="addTitle" tabindex="-1">Add your coach's exercises</h2>
     <div id="inBox">
+      <label for="notes" class="visually-hidden">Your coach's exercises, one per line</label>
       <textarea id="notes" placeholder="One exercise per line, e.g.&#10;- Lip roll arpeggios, E2 - E flat 5&#10;- 1, 3, 2, 4, 3, 5, 4, 3, 2, 1 once with gee and once with gah&#10;- 1 3 5 hold octave, then 7, 8, 9 then down all the way back to 1&#10;- Intervals, 1,2,1,3,1,4, etc... to the octave. Eee on root, yah on the intervals"></textarea>
-      <div class="row" style="margin-top:8px">
-        <label class="btn" style="margin:0;font-size:16px;color:var(--ink)">📷&nbsp;Photo or screenshot<input id="photo" type="file" accept="image/*" hidden></label>
+      <div class="row mt-s2">
+        <label class="btn photo" for="photo"><span aria-hidden="true">📷&nbsp;</span>Photo or screenshot<input id="photo" class="visually-hidden" type="file" accept="image/*"></label>
       </div>
       <div id="ocr" class="busy" hidden><span class="spin"></span><span id="ocrMsg">Reading your notes…</span></div>
       <p class="note">One exercise per line. Write it like your coach does: degrees (1-3-5 or do-mi-sol), "hold", "etc… to the octave", "down to 1", sounds ("with gee", "ee on root"), and a range (E2 - Eb5). Photos of typed or neatly printed notes read best. Messy handwriting may need fixing up.</p>
       <details><summary>Range to use when a line doesn't give one</summary>
         <div class="grid"><div><label for="dStart">From</label><input id="dStart"></div><div><label for="dEnd">To (starting notes)</label><input id="dEnd"></div></div>
       </details>
-      <div class="row" style="margin-top:10px"><button id="parseBtn" class="pri">Convert all</button><button class="ghost" data-go="lib">Cancel</button></div>
+      <div class="row mt-s3"><button id="parseBtn" class="pri">Convert all</button><button class="ghost" data-go="lib">Cancel</button></div>
       <p class="msg" id="parseMsg" role="status" hidden></p>
     </div>
-    <div id="eds" style="margin-top:14px"></div>
+    <div id="eds" class="mt-s4"></div>
     <div id="saveRow" class="row" hidden><button class="pri" id="saveBtn">Save</button><button class="ghost" data-go="lib">Cancel</button></div>
     <p class="msg" id="saveMsg" role="status" hidden></p>
   </section>
 
   <section id="prac">
     <button class="ghost back" id="backBtn" aria-label="Back to your exercises">← Back</button>
-    <div><b id="pName"></b><div class="sub" id="pInfo"></div></div>
+    <div><h2 class="pname" id="pName" tabindex="-1"></h2><div class="sub" id="pInfo"></div></div>
     <p class="roundline" id="roundLine"></p>
     <div class="prog" id="prog" role="progressbar" aria-label="Progress through the exercise" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="progFill"></i></div>
     <div class="read"><div><div class="sub">You</div><div class="big" id="rNote">–</div></div><div class="sing"><div class="sub">Sing</div><div class="big" id="rSyl">–</div></div><div class="cents"><div>Target <b id="rTarget">–</b></div><div id="rCents">&nbsp;</div></div></div>
     <div class="meter"><i id="needle" class="quiet"></i></div>
-    <div class="fig"><canvas id="cv"></canvas></div>
-    <div id="micCard" class="card warn" role="alert" hidden><p id="micCardMsg" style="margin:0 0 10px"></p><button id="micRetry">Try again</button><button id="editFix" hidden>Edit exercise</button></div>
-    <div id="leakCard" class="card" role="status" hidden><p style="margin:0 0 10px">I can hear the piano through the mic. Headphones will make your scores fair.</p><button class="ghost" id="leakDismiss">Got it</button></div>
+    <div class="fig"><canvas id="cv" role="img" aria-label="Pitch roll: the notes to sing slide past the blue line, with your voice drawn as a line"></canvas></div>
+    <div id="micCard" class="card warn" role="alert" hidden><p id="micCardMsg" class="flush-p"></p><button id="micRetry">Try again</button><button id="editFix" hidden>Edit exercise</button></div>
+    <div id="leakCard" class="card" role="status" hidden><p class="flush-p">I can hear the piano through the mic. Headphones will make your scores fair.</p><button class="ghost" id="leakDismiss">Got it</button></div>
     <p class="note" id="pauseNote" role="status" hidden></p>
     <details class="drawer" id="soundDrawer"><summary>Sound settings</summary>
-      <label for="vol">Piano volume</label><input id="vol" type="range" min="0" max="1" step="0.05" value="0.6" style="padding:0">
+      <label for="vol">Piano volume</label><input id="vol" type="range" min="0" max="1" step="0.05" value="0.6">
       <p class="note">Your voice line lines itself up automatically. The picture delay only shifts the moving blocks to match when you hear the piano. Slide right if a block reaches the blue line before you hear its note.</p>
-      <label for="sync">Picture delay: <span id="syncV"></span></label><input id="sync" type="range" min="0" max="500" step="10" value="100" style="padding:0">
-      <button class="ghost small" id="syncReset" style="margin-top:6px">Reset to automatic</button>
+      <label for="sync">Picture delay: <span id="syncV"></span></label><input id="sync" type="range" min="0" max="500" step="10" value="100">
+      <button class="ghost small mt-s2" id="syncReset">Reset to automatic</button>
     </details>
     <div class="dock"><div class="row"><button class="pri" id="goBtn">Start</button><button id="pauseBtn" hidden>Pause</button><button id="repeatBtn" hidden>Again</button><button id="skipBtn" hidden>Skip</button></div></div>
   </section>
 
   <section id="rep">
-    <h2 id="repTitle">Session report</h2>
-    <div class="card"><div class="score"><span class="big" id="sPct">0%</span><span>of notes landed in tune<br><small class="sub" id="sSub"></small></span></div>
+    <h2 id="repTitle" tabindex="-1">Session report</h2>
+    <div class="card"><div class="score"><span class="big" id="sPct" aria-hidden="true">0%</span><span class="visually-hidden" id="sPctText"></span><span>of notes landed in tune<br><small class="sub" id="sSub"></small></span></div>
       <p class="cheer" id="cheer"></p>
       <div id="spark" class="spark" hidden></div>
-      <div id="stats" style="margin-top:10px"></div></div>
-    <div class="card" id="setCard" hidden><b>Set summary</b><p class="note" style="margin-top:2px">Every exercise in this set, one line each.</p><div id="setRows"></div></div>
+      <div id="stats" class="mt-s3"></div></div>
+    <div class="card" id="setCard" hidden><b>Set summary</b><p class="note tight">Every exercise in this set, one line each.</p><div id="setRows"></div></div>
     <div class="card"><b>What went well</b><ul class="tips good" id="good"></ul></div>
     <div class="card"><b>To try next time</b><ul class="tips" id="tips"></ul></div>
     <div class="card"><b>Note by note</b><p class="note">How close each note landed, in cents (100 = a half step). Green is within 25, gold within 50, lavender is still finding it.</p><div id="notesOut"></div></div>
@@ -89,7 +94,7 @@
     <p class="note" id="leakNote" role="status" hidden></p>
     <p class="note" id="debugRow" hidden><a id="debugLink" href="#">Download session data</a></p>
     <p class="note" id="toneNote">Tone readings are estimates from the sound and vary with the vowel, mic and room. Use them to spot trends, not as a verdict.</p>
-    <div class="row"><button class="pri" id="nextBtn" hidden>Next exercise</button><button id="againBtn">Go again</button><button class="ghost" data-go="lib">Done</button></div>
+    <div class="actions"><button class="pri wide" id="nextBtn" hidden>Next exercise</button><button id="againBtn">Go again</button><button class="ghost" id="doneBtn" data-go="lib">Done</button></div>
   </section>
 </div>
 

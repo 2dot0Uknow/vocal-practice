@@ -13,12 +13,57 @@ import { firstIndexWhere, targetRange, nearestTargetByStart } from '../timeindex
  *  - spelling: how to spell note names ('b', '#' or 'auto'; see noteName)
  *  - voiceLag: seconds to shift the voice frames back by
  */
+/** V5: the pitches (MIDI, highest first) of the round being sung, or the next one when between notes, or the last one at the end. */
+export function currentRoundPitches(targets, now) {
+  if (!targets.length) return [];
+  const found = firstIndexWhere(targets, (target) => target.t1 > now);
+  const index = found < targets.length ? found : targets.length - 1;
+  const round = targets[index].round;
+  let first = index;
+  let last = index;
+  while (first > 0 && targets[first - 1].round === round) first--;
+  while (last < targets.length - 1 && targets[last + 1].round === round) last++;
+  return [...new Set(targets.slice(first, last + 1).map((target) => target.m))].sort((a, b) => b - a);
+}
+
+/**
+ * V5: how strongly to glow (0 = not at all, up to 1) for the note being sung: 0 until the newest voiced frames have been
+ * within 25 cents of it for 0.3 s, then easing up to 1 over the next 0.3 s. A stray frame (under 0.1 s) does not break the run;
+ * newest frames older than half a second mean nothing is being sung now.
+ */
+export function heldInTune(frames, target, now, voiceLag) {
+  let newest = null;
+  let since = null;
+  for (let i = frames.length - 1; i >= 0; i--) {
+    const time = frames[i].t - voiceLag;
+    if (time > now) continue;
+    if (time < target.t0) break;
+    const good = frames[i].m != null && Math.abs(cents(frames[i].m, target.m)) <= 25;
+    if (good) {
+      if (newest === null) {
+        // A frame is stamped when the voice was heard, which trails the song clock by the input latency and the voice lag: allow for both.
+        if (now - time > 0.5) return 0;
+        newest = time;
+      }
+      since = time;
+    } else if (newest === null || since - time > 0.1) {
+      break;
+    }
+  }
+  if (newest === null) return 0;
+  const held = newest - since;
+  return held < 0.3 ? 0 : Math.min(1, 0.4 + (held - 0.3) / 0.3 * 0.6);
+}
+
 export function createRoll(canvas) {
   const context = canvas.getContext('2d');
   // Visible pitch range (MIDI); it glides toward whatever notes are coming up.
   let lowestPitch = 45;
   let highestPitch = 60;
   let colours = {};
+  let fonts = {};
+  // V5: the soft "held in tune" glow is skipped when the phone asks for less motion.
+  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 
   // Canvas can't read CSS variables, so resolve them through a hidden element.
   const probe = document.createElement('span');
@@ -39,6 +84,17 @@ export function createRoll(canvas) {
       on: resolve('--on'),
       near: resolve('--near'),
       far: resolve('--far'),
+      panel: resolve('--panel'),
+    };
+    // V5: canvas text comes from the CSS custom properties (--roll-font, --roll-size-*), not from numbers in this file.
+    const root = getComputedStyle(document.documentElement);
+    const read = (name, fallback) => root.getPropertyValue(name).trim() || fallback;
+    const family = read('--roll-font', 'Inter,sans-serif');
+    fonts = {
+      grid: `${read('--roll-size-grid', '11px')} ${family}`,
+      note: `700 ${read('--roll-size-note', '12px')} ${family}`,
+      hint: `${read('--roll-size-hint', '14px')} ${family}`,
+      noteSize: parseFloat(read('--roll-size-note', '12px')),
     };
   }
 
@@ -84,20 +140,28 @@ export function createRoll(canvas) {
     const yOf = (midi) => height - ((midi - lowestPitch) / (highestPitch - lowestPitch)) * height;
     const semitoneHeight = height / (highestPitch - lowestPitch);
 
-    // Semitone grid lines, with labels on every C and G.
-    context.font = '11px Inter,sans-serif';
+    const active = running ? activeAt(targets, now) : null;
+    // Frames are in time order: start at the first one that is recent enough. Detector octave glitches are not drawn.
+    const visibleFrames = dropOctaveGlitches(frames.slice(firstIndexWhere(frames, (frame) => frame.t - voiceLag >= now - 1.6)));
+    // V5: the notes of the round being sung (or about to be) are named on the left edge.
+    const labelled = currentRoundPitches(targets, now).map((midi) => ({ midi, y: yOf(midi) }));
+
+    // Semitone grid lines, with labels on every C and G (a grid label is skipped where a round label sits).
+    context.font = fonts.grid;
     context.textBaseline = 'middle';
     for (let midi = Math.ceil(lowestPitch); midi <= highestPitch; midi++) {
       context.fillStyle = colours.line;
       context.fillRect(0, yOf(midi), width, midi % 12 == 0 ? 1.5 : 0.5);
-      if (midi % 12 == 0 || midi % 12 == 7) {
+      if ((midi % 12 == 0 || midi % 12 == 7) && !labelled.some((label) => Math.abs(label.y - (yOf(midi) - 7)) < fonts.noteSize + 2)) {
         context.fillStyle = colours.muted;
         context.fillText(noteName(midi, spelling), 6, yOf(midi) - 7);
       }
     }
 
+    // V5: a soft glow on the block being sung once the voice has held it in tune for 0.3 s.
+    const glow = active && !reducedMotion.matches ? heldInTune(visibleFrames, active, now, voiceLag) : 0;
+
     // Target notes as rounded blocks, the current one highlighted, with the sound's name above.
-    const active = running ? activeAt(targets, now) : null;
     // Only the notes that can be on screen: from "now" back to the left edge to the right edge.
     const onScreen = targetRange(targets, now - 0.3 * 5, now + 0.7 * 5);
     targets.slice(onScreen.start, onScreen.end).forEach((target) => {
@@ -107,6 +171,13 @@ export function createRoll(canvas) {
       context.fillStyle = target == active ? colours.pri : colours.bar;
       context.beginPath();
       context.roundRect(left + 1, yOf(target.m) - semitoneHeight * 0.4, Math.max(4, right - left - 2), semitoneHeight * 0.8, 4);
+      if (target == active && glow > 0) {
+        context.save();
+        context.shadowColor = colours.on;
+        context.shadowBlur = 6 + 14 * glow;
+        context.fill();
+        context.restore();
+      }
       context.fill();
       if (target.syl && right - left > 26) {
         context.fillStyle = colours.muted;
@@ -120,8 +191,6 @@ export function createRoll(canvas) {
     context.lineWidth = 4;
     context.lineCap = 'round';
     let previousPoint = null;
-    // Frames are in time order: start at the first one that is recent enough. Detector octave glitches are not drawn.
-    const visibleFrames = dropOctaveGlitches(frames.slice(firstIndexWhere(frames, (frame) => frame.t - voiceLag >= now - 1.6)));
     let edge = 0;   // -1 / 1: the newest point is below / above the visible range
     let edgeX = 0;
     for (const frame of visibleFrames) {
@@ -164,14 +233,32 @@ export function createRoll(canvas) {
     context.globalAlpha = 0.55;
     context.fillRect(width * 0.3 - 1, 0, 2, height);
     context.globalAlpha = 1;
+
+    // V5: round labels last, so a block sliding past the left edge goes under them.
+    context.font = fonts.note;
+    context.textBaseline = 'middle';
+    labelled.forEach(({ midi, y }) => {
+      const text = noteName(midi, spelling);
+      const textWidth = context.measureText(text).width;
+      context.globalAlpha = 0.85;
+      context.fillStyle = colours.panel;
+      context.beginPath();
+      context.roundRect(2, y - fonts.noteSize * 0.7, textWidth + 8, fonts.noteSize * 1.4, 4);
+      context.fill();
+      context.globalAlpha = 1;
+      context.fillStyle = colours.ink;
+      context.fillText(text, 6, y);
+    });
     if (!running) {
       context.fillStyle = colours.muted;
-      context.font = '14px Inter,sans-serif';
+      context.font = fonts.hint;
       context.textAlign = 'center';
       context.fillText('Press Start, then sing along with the piano', width / 2, 24);
       context.textAlign = 'left';
     }
   }
+
+  readColours();
 
   return { draw, fit, resize, readColours };
 }
