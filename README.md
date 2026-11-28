@@ -48,6 +48,8 @@ node tests/browser/session-checks.cjs            # start/stop, double tap, Back,
 node tests/browser/converter-checks.cjs          # (run by check-app) converter lines, guess notes, Eb spelling, Save/Convert feedback
 node tests/browser/history-checks.cjs            # (run by check-app) schema-1 data migrates to 2, new history fields, rename keeps history
 node tests/browser/scoring-checks.cjs         # (run by check-app) octave-off scoring, piano-leak notice, narrow-band tone rows, ?debug=1 download
+node tests/browser/polish-checks.cjs         # (run by check-app) recorded piano (17 samples, limiter, fallback), practice layout at 412x915, round line, fade to a dash, reorder / duplicate / undo, Hear one round, set summary, sparkline, first-launch card, theme label
+node tests/browser/polish-checks.cjs --shots out/   # same, and screenshots of library, practice and report in light and dark
 node tests/browser/flow-checks.cjs               # (run by check-app) Pause / Resume, Again, Skip, skip the last round; which piano notes were scheduled and cancelled
 node tests/browser/perf-checks.cjs               # (check-app --perf) plays a 24-round arpeggio to the end (~2 min): oscillators created vs alive, analyses per second, report delay
 node tests/browser/check-app.cjs --shots out/     # same, and save screenshots into out/
@@ -78,7 +80,11 @@ js/calibration.js     first-chord measurements: noise floor -> pitch gate, piano
 js/debug.js           the ?debug=1 session download: what goes in the file, and reading one back (pure)
 js/session.js         session state machine, decideEnd (what stopping means), mic-failure wording (pure)
 js/wakelock.js        Screen Wake Lock while a session runs
-js/audio.js           audio context, synthesised piano, microphone chain, trill mode
+js/piano.js           the recorded piano's maths: which sample for a note, playbackRate, envelope times (pure)
+js/flow.js            round line, "Ready…" count-in, when readouts fade, set summary rows (pure)
+js/library-ops.js     reorder / duplicate / delete + undo, first-launch range and re-basing the samples (pure)
+js/sparkline.js       the report's last-ten-runs line: geometry and label (pure)
+js/audio.js           audio context, recorded piano (samples loaded lazily; synthesised piano as the fallback) behind a limiter, microphone chain, trill mode
 js/store.js           localStorage wrapper and the storage key names
 js/migrate.js         migrate(storage): data-shape version (vp_schema) and the steps that bring saved data up to date
 js/history.js         history entries (what a run saves), previousRunsOf (by exercise id), the 200-entry cap
@@ -91,7 +97,8 @@ js/ui/photo.js        photo -> text (Tesseract, loaded on demand; needs a connec
 js/ui/practice.js     practice screen: scheduler tick (places rounds, plays the piano ahead), 20 ms analysis timer, drawing loop, Pause / Again / Skip buttons
 js/ui/roll.js         the pitch roll canvas
 js/ui/report.js       report screen: HTML from summarizeSession(), saves history
-js/ui/theme.js        theme button
+js/ui/toast.js        the bottom message with Undo
+js/ui/theme.js        theme button (shows Auto / Light / Dark)
 tests/                node --test files; helpers/ (synthetic signals), fixtures/, tools/ (generator), browser/ (Playwright)
 ```
 
@@ -108,6 +115,7 @@ and importable from Node.
 | `vp_lat` | number, seconds (0 to 0.5) | Picture delay set with the slider. Missing/null = automatic. |
 | `vp_vlag` | number, seconds | Voice lag learned from your sessions (default 0.15). |
 | `vp_theme` | `""`, `"light"` or `"dark"` | Colour theme; empty = match the phone. |
+| `vp_onboarded` | `1` | The first-launch "comfortable range" card was answered or dismissed; it is never shown again. A flag, not a data shape, so no migration. |
 | `vp_schema` | integer | Data-shape version. Absent = 1 (the original shape). Now 2. See "Migrations". |
 
 A history entry:
@@ -130,6 +138,18 @@ Scoring changed in a later version (no octave folding, see "Scoring notes"), so 
 
 Entries from before schema 2 have only `name, pct, ts, date` (plus `exId` once migrated). Everything that reads history
 must cope with the other fields being absent.
+
+## The piano
+
+`audio/piano/` has 17 mono MP3 samples (C, D#, F#, A in each octave, C2 to C6, 2.8 s each with a 0.4 s fade, 392 KB in all).
+They are fetched and decoded once, on the first tap anywhere, or when a practice screen or "Hear one round" needs them, and kept for
+the page's life. A note plays the nearest sample at `playbackRate = 2^((midi - sampleMidi)/12)` (never more than one semitone away),
+with a 5 ms attack and a 0.25 s release from the end of the note, so held notes end cleanly. A note longer than 2 s also gets a soft sustain layer (a sine on the pitch plus a quiet octave, low-passed, about -18 dB under the
+sample, fading in from 1.2 s to 1.6 s) that keeps the pitch audible to the end and releases with the sample; nothing loops. It is part of the
+note's handle, so Pause / Again / Skip fade it with the sample. Until the samples are ready, or if loading fails (a
+`console.warn`, no error), the original synthesised piano plays, unchanged. Everything goes through a compressor used as a limiter
+(threshold -10 dB, ratio 12, 3 ms attack, 0.25 s release) after the volume slider. Chrome itself prints "Failed to load resource" for a
+sample that cannot be fetched; the app cannot silence that line.
 
 ## Scoring notes
 
@@ -185,3 +205,6 @@ An exercise:
 ## Credits
 
 Fonts: Nunito and Inter (Google Fonts, SIL Open Font License).
+
+Piano: Salamander Grand Piano by Alexander Holm, CC BY 3.0, trimmed and converted to mono.
+(`audio/piano/`, see `audio/piano/LICENSE.txt`; `tools/make-piano-samples.sh` shows exactly how the 17 files were made.)

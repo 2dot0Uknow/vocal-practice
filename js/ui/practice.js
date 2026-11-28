@@ -3,6 +3,7 @@
 
 import { $, fillRange } from './dom.js';
 import { state } from '../state.js';
+import { roundLabel, progressFraction, singReadout, readoutsFaded, setLabel } from '../flow.js';
 import { store, KEYS } from '../store.js';
 import { noteName, hzToMidi, spellingOf } from '../music.js';
 import { planRounds, describeExercise } from '../exercise.js';
@@ -18,7 +19,7 @@ import { createScheduler } from '../scheduler.js';
 import {
   ensureAudio, setPianoVolume, openMic, micInputLatency, outputDelayEstimate, getAudioContext,
   resetTrillMode, setTrillMode, captureMicSamples, analysisWindow, brightness, playPianoNote, cancelPianoNote, closeAudio,
-  micSampleRate, highBandRatio,
+  micSampleRate, highBandRatio, loadPianoSamples, pianoReady,
 } from '../audio.js';
 import { navTo, goHome, currentScreen } from './navigation.js';
 import { createSessionMachine, decideEnd, reportTitle, MIC_MESSAGES } from '../session.js';
@@ -29,6 +30,10 @@ import { openEditor } from './editor.js';
 import { previousRunsOf } from '../history.js';
 
 let currentExercise = null;
+let plan = null;               // planRounds(currentExercise): the round list (for the round line's root notes)
+let firstChordEnd = null;       // F2: song time at which the first cue chord ends ("Ready…" until then); null when idle
+let lastVoicedAt = null;        // F3: performance.now() of the last analysis that heard a voice
+let roundLineShown = '';        // what the round line / progress bar last showed, so the loop only touches the page on change
 let run = null;                 // the rounds placed on the song clock so far (run.js); run.targets() is what is drawn and scored
 const frameStore = createFrameStore();   // one entry per analysis of the microphone, in time order
 let scheduler = null;           // hands the piano to the audio layer ~2 s ahead (scheduler.js)
@@ -90,22 +95,57 @@ export function refreshRoll() {
 function resetPracticeView() {
   // Idle preview: the first rounds laid out from time 0, as a run would place them.
   try {
-    run = createRun(planRounds(currentExercise));
+    plan = planRounds(currentExercise);
+    run = createRun(plan);
     run.start(0);
     run.advance(0, PLACE_AHEAD);
   } catch (error) {
     // A saved exercise whose pattern does not parse: show an empty roll; Start explains (see startSession).
     console.warn('Could not lay out this exercise', error);
     run = null;
+    plan = null;
   }
   frameStore.clear();
   holdView = null;
+  firstChordEnd = null;
+  lastVoicedAt = null;
+  showReadoutsQuiet();
   $('goBtn').textContent = 'Start';
   $('goBtn').disabled = false;
   updateControls();
   $('rSyl').textContent = run?.targets()[0]?.syl || '–';
+  roundLineShown = '';
+  updateRoundLine(0);
   if (run) roll.fit(run.targets(), 0, false);
   drawRoll();
+}
+
+/** F2: "Round 3 of 12 · starting on D3" and the thin progress bar, from the run and the heard song time `view`. */
+function updateRoundLine(view) {
+  if (!run || !plan) {
+    $('roundLine').textContent = '';
+    $('progFill').style.width = '0%';
+    return;
+  }
+  const index = Math.max(0, run.currentIndex(view));
+  const record = run.rounds.find((placed) => placed.index === index);
+  const within = record && record.end > record.start ? (view - record.start) / (record.end - record.start) : 0;
+  const fraction = isRunning() || holdView != null ? progressFraction(index, run.total, within) : 0;
+  const text = roundLabel(index, run.total, plan.rounds[index].root, spellingOf(currentExercise));
+  const key = `${text}|${Math.round(fraction * 200)}`;
+  if (key === roundLineShown) return;
+  roundLineShown = key;
+  $('roundLine').textContent = text;
+  $('progFill').style.width = fraction * 100 + '%';
+  $('prog').setAttribute('aria-valuenow', Math.round(fraction * 100));
+}
+
+/** F3: "You" and the needle show a dash. */
+function showReadoutsQuiet() {
+  $('rNote').textContent = '–';
+  $('rNote').classList.add('quiet');
+  $('rCents').innerHTML = '&nbsp;';
+  $('needle').classList.add('quiet');
 }
 
 export function openPractice(exercise) {
@@ -114,7 +154,8 @@ export function openPractice(exercise) {
   hideLeakCard();
   currentExercise = exercise;
   navTo('prac');
-  $('pName').textContent = exercise.name + (state.queue.length ? `  ·  ${state.queue.length} more after this` : '');
+  loadPianoSamples();   // F5: the recorded piano loads while the screen is open (the synth plays until it is ready)
+  $('pName').textContent = exercise.name + (state.set ? `  ·  ${setLabel(state.set.position, state.set.total)}` : '');
   $('pInfo').textContent = describeExercise(exercise);
   resetPracticeView();
 }
@@ -164,6 +205,7 @@ async function beginSession(token) {
   $('goBtn').textContent = 'Starting…';
   ensureAudio();
   const mic = await openMic();
+  if (mic.ok) await pianoReady(1000);   // F5: if the samples are still on their way, give them a moment so the first chord is not the synth
   // Anything may have happened while the browser was asking: Back, the phone locking, another Start.
   if (token !== sessionToken) return;     // already torn down by whoever changed things
   if (!mic.ok) {
@@ -193,7 +235,10 @@ async function beginSession(token) {
   resetTrillMode();
   recentTrillPitches = [];
   lastLagEstimateAt = 0;
-  run = createRun(planRounds(currentExercise));
+  plan = planRounds(currentExercise);
+  run = createRun(plan);
+  lastVoicedAt = null;
+  roundLineShown = '';
   scheduler = createScheduler({
     now: () => context.currentTime,
     play: (midi, t, d) => playPianoNote(midi, t, d),
@@ -201,6 +246,7 @@ async function beginSession(token) {
     onTick: schedulerTick,
   });
   const firstPlays = run.start(context.currentTime + 0.6).plays;
+  firstChordEnd = firstPlays[0].t + firstPlays[0].d;   // F2: "Ready…" until the first chord has finished
   scheduler.add(firstPlays);
   // The first play is the first round's cue chord: nobody should be singing then (A5, A2).
   calibration = createCalibration(firstPlays[0]);
@@ -231,6 +277,7 @@ function schedulerTick() {
 /** A pause has just taken effect: no piano, the roll holds still, and listening stops once the last notes are in. */
 function beginHold() {
   holdView = run.heldAt - outputLatency;
+  lastVoicedAt = null;
   holdAnalysisUntil = holdView + 0.3 + voiceLag + 0.15;   // the last note's scoring tail plus the voice lag
   recentTrillPitches = [];
   latest = { target: null, frame: null, judgedTarget: null };
@@ -260,6 +307,7 @@ function cutCurrentRound(discardFrom) {
   // Frames within the voice lag after the round's start still belong to the previous round's last note.
   frameStore.discardAfter(discardFrom + voiceLag);
   recentTrillPitches = [];
+  lastVoicedAt = null;
   latest = { target: null, frame: null, judgedTarget: null };
 }
 
@@ -414,6 +462,7 @@ function analyse() {
     : detect(samples, sampleRate, { gate, min: 0.6 });
   const frame = { t: now - inputLatency, m: null, tr: trill };
   if (pitch) {
+    lastVoicedAt = performance.now();
     frame.m = hzToMidi(pitch.f);
     frame.c = pitch.c;
     frame.ring = brightness();
@@ -467,9 +516,15 @@ function loop() {
   if (!isRunning()) return;
   const { target, frame, judgedTarget } = latest;
   const spelling = spellingOf(currentExercise);
+  const view = holdView ?? songTime();
   $('rTarget').textContent = target ? noteName(target.m, spelling) : '–';
-  $('rSyl').textContent = target && target.syl ? target.syl : '–';
-  if (frame && frame.m != null) {
+  $('rSyl').textContent = singReadout({ now: view, firstChordEnd, syllable: target && target.syl });
+  // F3: after 300 ms without a voiced frame "You" and the needle fade to a dash.
+  if (readoutsFaded(lastVoicedAt, performance.now())) {
+    if (!$('rNote').classList.contains('quiet')) showReadoutsQuiet();
+  } else if (frame && frame.m != null) {
+    $('rNote').classList.remove('quiet');
+    $('needle').classList.remove('quiet');
     $('rNote').textContent = noteName(frame.m, spelling);
     if (judgedTarget) {
       // A1: as sung, no octave folding (an octave away reads +-1200 and the needle sits at the end of the meter).
@@ -479,6 +534,7 @@ function loop() {
       $('needle').style.left = `calc(${50 + Math.max(-50, Math.min(50, off / 2))}% - 2px)`;
     }
   }
+  updateRoundLine(view);
   updateControls();
   drawRoll();
   animationFrame = requestAnimationFrame(loop);
@@ -523,5 +579,8 @@ export function initPractice() {
   });
   $('backBtn').onclick = goHome;
   $('againBtn').onclick = () => openPractice(currentExercise);
-  $('nextBtn').onclick = () => openPractice(state.queue.shift());
+  $('nextBtn').onclick = () => {
+    if (state.set) state.set.position++;
+    openPractice(state.queue.shift());
+  };
 }

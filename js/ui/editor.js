@@ -3,24 +3,37 @@
 
 import { $, esc } from './dom.js';
 import { state, saveExercises } from '../state.js';
+import { duplicateExercise, removeExercise, restoreExercise } from '../library-ops.js';
+import { showToast } from './toast.js';
 import { store, KEYS } from '../store.js';
 import { noteName, toMidi, parsePat, rootsOf, spellingOf, accidentalOf } from '../music.js';
 import { normEx, planRounds, placeRound } from '../exercise.js';
 import { parseAll } from '../converter.js';
-import { ensureAudio, getAudioContext, createPreviewBus, playPianoNote } from '../audio.js';
-import { navTo, goHome } from './navigation.js';
+import { ensureAudio, getAudioContext, createPreviewBus, playPianoNote, loadPianoSamples } from '../audio.js';
+import { navTo, goHome, refreshLibrary } from './navigation.js';
 
 let review = [];      // the exercises being edited (one when editing, any number after Convert)
 let cardInfo = [];    // per card, same order as review: {guessNote, original, dirty}. Never saved (B5, B8).
 let replaceTimer = null; // while "Replace your edited cards?" is waiting for its second tap
 let editMode = false; // true when editing one saved exercise rather than adding
-let preview = null;   // the "Hear one round" playback: {gain, oscillators}
+let preview = null;   // the "Hear one round" playback: {gain, oscillators, endTimer}
+
+const HEAR_WORDS = { play: 'Hear one round', stop: 'Stop' };
+
+/** F7: every "Hear one round" button reads Hear one round, except the one whose preview is playing, which reads Stop. */
+function showHearing(playingButton) {
+  document.querySelectorAll('#eds [data-a=hear]').forEach((button) => {
+    button.textContent = button === playingButton ? HEAR_WORDS.stop : HEAR_WORDS.play;
+  });
+}
 
 /** Fade out and stop a "Hear one round" preview that is still playing. */
 export function stopPreview() {
   const playing = preview;
   preview = null;
+  showHearing(null);
   if (!playing) return;
+  clearTimeout(playing.endTimer);
   try {
     const now = playing.gain.context.currentTime;
     playing.gain.gain.cancelScheduledValues(now);
@@ -82,12 +95,13 @@ function cardHTML(exercise, index) {
   </div>
   <label class="chk"><input type="checkbox" data-k="both"${exercise.both ? ' checked' : ''}> Come back down after reaching the top</label>
   <p class="note sum"></p>
-  <div class="row"><button data-a="hear">Hear one round</button><button class="ghost" data-a="del">${editMode ? 'Delete' : 'Remove'}</button></div></div>`;
+  <div class="row"><button data-a="hear">Hear one round</button>${editMode ? '<button class="ghost" data-a="dup">Duplicate</button>' : ''}<button class="ghost" data-a="del">${editMode ? 'Delete' : 'Remove'}</button></div></div>`;
 }
 
 /** Play the first round of an exercise on the piano. A new tap cuts off the previous preview. */
-function hearOneRound(exercise) {
+function hearOneRound(exercise, button) {
   ensureAudio();
+  loadPianoSamples();   // F5: starts loading on the first need; this preview uses the synth if the samples are not in yet
   stopPreview();
   const bus = createPreviewBus();
   preview = { gain: bus, oscillators: [] };
@@ -96,6 +110,13 @@ function hearOneRound(exercise) {
   const notes = placed.targets.filter((target) => target.pass === 0);
   const begin = getAudioContext().currentTime + 0.1 - notes[0].t0;
   notes.forEach((note) => playPianoNote(note.m, begin + note.t0, note.t1 - note.t0, bus, preview.oscillators));
+  // F7: the button says Stop while it plays, and goes back by itself when the round has ended.
+  showHearing(button);
+  const lastEnd = begin + notes[notes.length - 1].t1;
+  const mine = preview;
+  mine.endTimer = setTimeout(() => {
+    if (preview === mine) stopPreview();
+  }, Math.max(0, (lastEnd + 0.3 - getAudioContext().currentTime) * 1000));
 }
 
 function renderCards() {
@@ -121,23 +142,20 @@ function renderCards() {
     });
     card.addEventListener('change', updateFromCard);
     readCard(card);
-    card.querySelector('[data-a=hear]').onclick = () => {
+    card.querySelector('[data-a=hear]').onclick = (event) => {
+      // F7: while this card's round is playing, the same button stops it.
+      if (preview && event.currentTarget.textContent === HEAR_WORDS.stop) {
+        stopPreview();
+        return;
+      }
       const exercise = readCard(card);
       if (!exercise) return;
-      hearOneRound(exercise);
+      hearOneRound(exercise, event.currentTarget);
     };
-    const deleteButton = card.querySelector('[data-a=del]');
-    deleteButton.onclick = () => {
+    card.querySelector('[data-a=dup]')?.addEventListener('click', () => duplicateCard(card));
+    card.querySelector('[data-a=del]').onclick = () => {
       if (editMode) {
-        // Editing a saved exercise: Delete needs a second tap.
-        if (deleteButton.dataset.sure) {
-          state.exercises = state.exercises.filter((x) => x.id != review[0].id);
-          saveExercises();
-          goHome();
-        } else {
-          deleteButton.dataset.sure = 1;
-          deleteButton.textContent = 'Tap again to delete';
-        }
+        deleteSaved(review[0].id);
         return;
       }
       review.splice(index, 1);
@@ -145,6 +163,41 @@ function renderCards() {
       renderCards();
     };
   });
+}
+
+/** F6: delete a saved exercise at once, and offer Undo for 6 seconds (it comes back at its old place with the same id, so its history stays linked). */
+function deleteSaved(id) {
+  const { list, removed } = removeExercise(state.exercises, id);
+  if (!removed) return;
+  state.exercises = list;
+  saveExercises();
+  goHome();
+  showToast(`Deleted “${removed.exercise.name}”.`, {
+    onUndo: () => {
+      state.exercises = restoreExercise(state.exercises, removed);
+      saveExercises();
+      refreshLibrary();
+    },
+  });
+}
+
+/** F6: add a copy of the exercise as it is on the card ("<name> (copy)", new id, no history) right after it, and go back to the library. */
+function duplicateCard(card) {
+  card.dataset.checked = 1;   // mark the fields that need a look
+  const exercise = readCard(card);
+  if (!exercise) {
+    showMessage('saveMsg', 'This exercise needs a look before it can be copied. The marked field shows where.');
+    return;
+  }
+  if (!state.exercises.some((x) => x.id == exercise.id)) return;   // only saved exercises have a Duplicate button
+  const newId = 'x' + Date.now() + Math.random().toString(36).slice(2, 6);
+  const { list, copy } = duplicateExercise(state.exercises, exercise.id, newId);
+  // The copy takes what is on the card now; the original keeps its saved values.
+  Object.assign(copy, { ...exercise, id: newId, name: `${exercise.name} (copy)` });
+  state.exercises = list;
+  saveExercises();
+  goHome();
+  showToast(`Made “${copy.name}”.`, { ms: 4000 });
 }
 
 /** Mark (or unmark) fields as needing a look. Only once a Save has been tried, so typing is never nagged. */

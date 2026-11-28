@@ -1,8 +1,9 @@
-// Web Audio: the audio context, the synthesised piano, the microphone chain and trill mode.
+// Web Audio: the audio context, the piano (recorded samples, with the synthesised piano as fallback), the microphone chain and trill mode.
 // This module owns all audio state; nothing else touches AudioContext objects directly.
 
 import { midiToHz } from './music.js';
 import { classifyMicError } from './session.js';
+import { SAMPLE_MIDIS, sampleName, sampleFor, noteEnvelope, sustainLayer, LAYER_OCTAVE } from './piano.js';
 
 let context = null;       // AudioContext (created on first use, closed when a session ends)
 let masterGain = null;    // piano volume
@@ -25,13 +26,16 @@ export const getAudioContext = () => context;
 export function ensureAudio() {
   if (!context) {
     context = new (window.AudioContext || window.webkitAudioContext)();
-    // A gentle low-pass takes the harsh edge off the synthetic piano.
-    const lowpass = context.createBiquadFilter();
-    lowpass.type = 'lowpass';
-    lowpass.frequency.value = 5000;
     masterGain = context.createGain();
     masterGain.gain.value = pianoVolume;
-    masterGain.connect(lowpass).connect(context.destination);
+    // F5: a limiter after the volume, so a cue chord (three notes) can never clip.
+    const limiter = context.createDynamicsCompressor();
+    limiter.threshold.value = -10;
+    limiter.knee.value = 6;
+    limiter.ratio.value = 12;
+    limiter.attack.value = 0.003;
+    limiter.release.value = 0.25;
+    masterGain.connect(limiter).connect(context.destination);
   }
   if (context.state == 'suspended') context.resume();
 }
@@ -48,21 +52,135 @@ export function createPreviewBus() {
   return bus;
 }
 
+// F5: the recorded piano. Samples are fetched and decoded once (lazily, see loadPianoSamples) and kept for the page's
+// lifetime: an AudioBuffer does not belong to one audio context, and the context is closed after every session.
+const pianoBuffers = new Map();   // sample name ("Ds2") -> AudioBuffer
+let pianoState = 'idle';          // 'idle' | 'loading' | 'ready' | 'failed'
+let pianoLoading = null;          // the promise while loading
+
+/** For checks and the UI: where the sample loading stands. */
+export const pianoStatus = () => ({ state: pianoState, loaded: pianoBuffers.size, total: SAMPLE_MIDIS.length });
+
 /**
- * Play one piano note: six slightly stretched harmonics under a quick-attack, slow-decay envelope.
- * Pass `oscillators` (an array) to collect the oscillators so they can be stopped early.
+ * Fetch and decode all piano samples (once; a second call while loading shares the first). Resolves true when every
+ * sample is ready, false when any failed (then the synthesised piano keeps playing; a console.warn, never an error).
+ * A later call after a failure tries again.
+ */
+export function loadPianoSamples() {
+  if (pianoState === 'ready') return Promise.resolve(true);
+  if (pianoLoading) return pianoLoading;
+  pianoState = 'loading';
+  // Decode on a throwaway offline context: it needs no sound card, and it is not closed when a session ends.
+  const decoder = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(1, 1, 44100);
+  pianoLoading = Promise.all(SAMPLE_MIDIS.map(async (midi) => {
+    const name = sampleName(midi);
+    const response = await fetch(new URL(`../audio/piano/${name}.mp3`, import.meta.url));
+    if (!response.ok) throw new Error(`${name}: HTTP ${response.status}`);
+    pianoBuffers.set(name, await decoder.decodeAudioData(await response.arrayBuffer()));
+  })).then(() => {
+    pianoState = 'ready';
+    return true;
+  }).catch((error) => {
+    console.warn('Piano samples could not be loaded; using the built-in piano sound.', error);
+    pianoBuffers.clear();
+    pianoState = 'failed';
+    return false;
+  }).finally(() => {
+    pianoLoading = null;
+  });
+  return pianoLoading;
+}
+
+/** Resolves when the samples are ready or after `timeoutMs`, whichever comes first (never rejects). */
+export function pianoReady(timeoutMs) {
+  if (pianoState !== 'loading') return Promise.resolve(pianoState === 'ready');
+  return Promise.race([pianoLoading, new Promise((resolve) => setTimeout(() => resolve(false), timeoutMs))]);
+}
+
+/**
+ * Play one piano note. With the recorded samples loaded it is the nearest sample at the right speed; until then (or
+ * if loading failed) it is the synthesised piano. Same handle either way, for cancelPianoNote().
+ * Pass `oscillators` (an array) to collect the sound sources (oscillators or the sample's buffer source) so they can be stopped early.
+ */
+export function playPianoNote(midi, startTime, duration, output = masterGain, oscillators) {
+  if (pianoState === 'ready') return playSampledNote(midi, startTime, duration, output, oscillators);
+  return playSynthNote(midi, startTime, duration, output, oscillators);
+}
+
+/**
+ * A recorded note: ~5 ms attack, the recording's own decay, then a 0.25 s release from the end of the note, so a held
+ * note ends cleanly. The recordings are 2.8 s long: a note held longer simply rings out like a real piano (no looping).
+ * The note's nodes disconnect themselves when the source has ended.
+ */
+function playSampledNote(midi, startTime, duration, output, oscillators) {
+  const { name, rate } = sampleFor(midi);
+  const source = context.createBufferSource();
+  source.buffer = pianoBuffers.get(name);
+  source.playbackRate.value = rate;
+  const times = noteEnvelope(startTime, duration);
+  const envelope = context.createGain();
+  envelope.gain.setValueAtTime(0, startTime);
+  envelope.gain.linearRampToValueAtTime(1, times.attackEnd);
+  envelope.gain.setValueAtTime(1, times.releaseStart);
+  envelope.gain.linearRampToValueAtTime(0, times.releaseEnd);
+  source.connect(envelope).connect(output);
+  source.start(startTime);
+  source.stop(times.releaseEnd + 0.02);
+  const handle = { startTime, envelope, oscillators: [source], gains: [] };
+  let last = source;
+  // A held note outlasts the recording: a soft sustain layer keeps the pitch there until the note's end.
+  const layer = sustainLayer(startTime, duration);
+  if (layer) {
+    const layerGain = context.createGain();
+    layerGain.gain.setValueAtTime(0, startTime);
+    layerGain.gain.setValueAtTime(0, layer.fadeStart);
+    layerGain.gain.linearRampToValueAtTime(layer.level, layer.fadeEnd);
+    layerGain.gain.setValueAtTime(layer.level, layer.releaseStart);
+    layerGain.gain.linearRampToValueAtTime(0, layer.releaseEnd);
+    const tone = context.createBiquadFilter();
+    tone.type = 'lowpass';
+    tone.frequency.value = 2000;
+    tone.connect(layerGain).connect(output);
+    [[1, 1], [2, LAYER_OCTAVE]].forEach(([multiple, share]) => {
+      const oscillator = context.createOscillator();
+      const part = context.createGain();
+      part.gain.value = share;
+      oscillator.frequency.value = midiToHz(midi) * multiple;
+      oscillator.connect(part).connect(tone);
+      oscillator.start(layer.fadeStart);
+      oscillator.stop(layer.releaseEnd + 0.02);
+      handle.oscillators.push(oscillator);
+      handle.gains.push(part);
+      if (oscillators) oscillators.push(oscillator);
+      last = oscillator;
+    });
+    handle.gains.push(tone);
+    handle.layerGain = layerGain;
+  }
+  // Let go of the whole note when the last of its sources has ended (the layer outlasts a short recording).
+  last.onended = () => disconnectNote(handle);
+  if (oscillators) oscillators.push(source);
+  return handle;
+}
+
+/**
+ * The fallback: six slightly stretched harmonics under a quick-attack, slow-decay envelope.
  * Returns a handle for cancelPianoNote(). The note's nodes disconnect themselves once it has ended (B12),
  * so a long session does not leave thousands of dead nodes around.
  */
-export function playPianoNote(midi, startTime, duration, output = masterGain, oscillators) {
+function playSynthNote(midi, startTime, duration, output, oscillators) {
   const frequency = midiToHz(midi);
   const envelope = context.createGain();
-  envelope.connect(output);
+  // A gentle low-pass takes the harsh edge off the synthetic piano.
+  const lowpass = context.createBiquadFilter();
+  lowpass.type = 'lowpass';
+  lowpass.frequency.value = 5000;
+  envelope.connect(lowpass).connect(output);
   envelope.gain.setValueAtTime(0, startTime);
   envelope.gain.linearRampToValueAtTime(0.3, startTime + 0.006);
   envelope.gain.exponentialRampToValueAtTime(0.11, startTime + 0.3);
   envelope.gain.exponentialRampToValueAtTime(0.0005, startTime + duration + 0.6);
-  const handle = { startTime, envelope, oscillators: [], gains: [] };
+  const handle = { startTime, envelope, oscillators: [], gains: [], lowpass };
   [1, 2, 3, 4, 5, 6].forEach((harmonic) => {
     const oscillator = context.createOscillator();
     const harmonicGain = context.createGain();
@@ -86,6 +204,8 @@ function disconnectNote(handle) {
     handle.oscillators.forEach((oscillator) => oscillator.disconnect());
     handle.gains.forEach((gain) => gain.disconnect());
     handle.envelope.disconnect();
+    if (handle.layerGain) handle.layerGain.disconnect();
+    if (handle.lowpass) handle.lowpass.disconnect();
   } catch (error) {
     // Already disconnected.
   }
@@ -106,6 +226,11 @@ export function cancelPianoNote(handle, now) {
     gain.cancelScheduledValues(now);
     gain.setValueAtTime(gain.value, now);
     gain.linearRampToValueAtTime(0, now + 0.03);
+    if (handle.layerGain) {
+      handle.layerGain.gain.cancelScheduledValues(now);
+      handle.layerGain.gain.setValueAtTime(handle.layerGain.gain.value, now);
+      handle.layerGain.gain.linearRampToValueAtTime(0, now + 0.03);
+    }
     handle.oscillators.forEach((oscillator) => oscillator.stop(now + 0.05));
   } catch (error) {
     // Already stopped or the context is closed.

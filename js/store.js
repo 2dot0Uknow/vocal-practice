@@ -8,6 +8,7 @@ export const KEYS = {
   pictureDelay: 'vp_lat',
   voiceLag: 'vp_vlag',
   theme: 'vp_theme',
+  onboarded: 'vp_onboarded', // 1 once the first-launch range card was answered or dismissed (F10)
   schema: 'vp_schema', // integer data-shape version, see migrate.js (absent = 1)
 };
 

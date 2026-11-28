@@ -13,15 +13,25 @@
 <div class="wrap">
   <div class="top"><span class="dot"></span><div style="flex:1"><h1>Vocal Practice</h1><p class="sub">Your coach's exercises, at your own pace</p></div>
     <button class="ghost" id="themeBtn" aria-label="Change colour theme" style="flex:none;min-height:40px;padding:0 12px;font-size:14px"></button></div>
+  <div id="toast" class="toast" role="status" hidden><span id="toastMsg"></span><button class="ghost" id="toastUndo" hidden>Undo</button></div>
 
   <section id="lib" class="on">
     <div id="micWarn" class="card warn" hidden></div>
+    <div id="onboard" class="card onboard" hidden>
+      <h2>What's a comfortable range for you?</h2>
+      <p class="note" style="margin-top:0">Pick the lowest note, and the highest note you'd like a pattern to start on. The sample exercises will fit it. You can change it any time.</p>
+      <div class="grid"><div><label for="obLow">Lowest note</label><input id="obLow" value="C3" autocomplete="off"></div><div><label for="obHigh">Highest starting note</label><input id="obHigh" value="G3" autocomplete="off"></div></div>
+      <p class="msg" id="obMsg" role="status" hidden></p>
+      <div class="row" style="margin-top:10px"><button class="pri" id="obSave">Save</button><button class="ghost" id="obSkip">Not now</button></div>
+    </div>
     <div class="card journey" id="journey"></div>
     <div class="card warn"><b>Tip:</b> headphones help the app hear just your voice, so your feedback stays accurate.</div>
     <div class="row" style="margin-bottom:12px"><button class="pri" id="newBtn">+ Add exercises</button><button id="allBtn">Practice all in order</button></div>
+    <div class="listbar"><h2 id="listTitle">Your exercises</h2><button class="ghost small" id="reorderBtn" aria-pressed="false" hidden>Reorder</button></div>
+    <p class="note" id="reorderNote" role="status" hidden></p>
     <div id="list"></div>
     <h2 style="margin-top:24px">Your journey so far</h2>
-    <div id="hist" class="hist">No sessions yet.</div>
+    <div id="hist" class="hist"></div>
     <div class="row" style="margin-top:10px"><button class="ghost" id="moreBtn" hidden>Load more</button></div>
   </section>
 
@@ -46,27 +56,32 @@
   </section>
 
   <section id="prac">
+    <button class="ghost back" id="backBtn" aria-label="Back to your exercises">← Back</button>
     <div><b id="pName"></b><div class="sub" id="pInfo"></div></div>
+    <p class="roundline" id="roundLine"></p>
+    <div class="prog" id="prog" role="progressbar" aria-label="Progress through the exercise" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="progFill"></i></div>
     <div class="read"><div><div class="sub">You</div><div class="big" id="rNote">–</div></div><div class="sing"><div class="sub">Sing</div><div class="big" id="rSyl">–</div></div><div class="cents"><div>Target <b id="rTarget">–</b></div><div id="rCents">&nbsp;</div></div></div>
-    <div class="meter"><i id="needle"></i></div>
+    <div class="meter"><i id="needle" class="quiet"></i></div>
     <div class="fig"><canvas id="cv"></canvas></div>
     <div id="micCard" class="card warn" role="alert" hidden><p id="micCardMsg" style="margin:0 0 10px"></p><button id="micRetry">Try again</button><button id="editFix" hidden>Edit exercise</button></div>
     <div id="leakCard" class="card" role="status" hidden><p style="margin:0 0 10px">I can hear the piano through the mic. Headphones will make your scores fair.</p><button class="ghost" id="leakDismiss">Got it</button></div>
-    <div class="row" style="margin-top:12px"><button class="pri" id="goBtn">Start</button><button id="pauseBtn" hidden>Pause</button><button id="repeatBtn" hidden>Again</button><button id="skipBtn" hidden>Skip</button><button class="ghost" id="backBtn">Back</button></div>
     <p class="note" id="pauseNote" role="status" hidden></p>
-    <label for="vol">Piano volume</label><input id="vol" type="range" min="0" max="1" step="0.05" value="0.6" style="padding:0">
-    <details style="margin-top:6px"><summary>Fine-tune the picture (optional)</summary>
-      <p class="note" style="margin-top:0">Your voice line lines itself up automatically. This only shifts the moving blocks to match when you hear the piano. Slide right if a block reaches the blue line before you hear its note.</p>
+    <details class="drawer" id="soundDrawer"><summary>Sound settings</summary>
+      <label for="vol">Piano volume</label><input id="vol" type="range" min="0" max="1" step="0.05" value="0.6" style="padding:0">
+      <p class="note">Your voice line lines itself up automatically. The picture delay only shifts the moving blocks to match when you hear the piano. Slide right if a block reaches the blue line before you hear its note.</p>
       <label for="sync">Picture delay: <span id="syncV"></span></label><input id="sync" type="range" min="0" max="500" step="10" value="100" style="padding:0">
-      <button class="ghost" id="syncReset" style="min-height:36px;font-size:14px;margin-top:6px">Reset to automatic</button>
+      <button class="ghost small" id="syncReset" style="margin-top:6px">Reset to automatic</button>
     </details>
+    <div class="dock"><div class="row"><button class="pri" id="goBtn">Start</button><button id="pauseBtn" hidden>Pause</button><button id="repeatBtn" hidden>Again</button><button id="skipBtn" hidden>Skip</button></div></div>
   </section>
 
   <section id="rep">
     <h2 id="repTitle">Session report</h2>
     <div class="card"><div class="score"><span class="big" id="sPct">0%</span><span>of notes landed in tune<br><small class="sub" id="sSub"></small></span></div>
       <p class="cheer" id="cheer"></p>
+      <div id="spark" class="spark" hidden></div>
       <div id="stats" style="margin-top:10px"></div></div>
+    <div class="card" id="setCard" hidden><b>Set summary</b><p class="note" style="margin-top:2px">Every exercise in this set, one line each.</p><div id="setRows"></div></div>
     <div class="card"><b>What went well</b><ul class="tips good" id="good"></ul></div>
     <div class="card"><b>To try next time</b><ul class="tips" id="tips"></ul></div>
     <div class="card"><b>Note by note</b><p class="note">How close each note landed, in cents (100 = a half step). Green is within 25, gold within 50, lavender is still finding it.</p><div id="notesOut"></div></div>
