@@ -144,8 +144,9 @@ must cope with the other fields being absent.
 `audio/piano/` has 17 mono MP3 samples (C, D#, F#, A in each octave, C2 to C6, 2.8 s each with a 0.4 s fade, 392 KB in all).
 They are fetched and decoded once, on the first tap anywhere, or when a practice screen or "Hear one round" needs them, and kept for
 the page's life. A note plays the nearest sample at `playbackRate = 2^((midi - sampleMidi)/12)` (never more than one semitone away),
-with a 5 ms attack and a 0.25 s release from the end of the note, so held notes end cleanly. A note held longer than the recording
-(about 2.8 s) just rings out and fades, like a real piano; nothing loops. Until the samples are ready, or if loading fails (a
+with a 5 ms attack and a 0.25 s release from the end of the note, so held notes end cleanly. A note longer than 2 s also gets a soft sustain layer (a sine on the pitch plus a quiet octave, low-passed, about -18 dB under the
+sample, fading in from 1.2 s to 1.6 s) that keeps the pitch audible to the end and releases with the sample; nothing loops. It is part of the
+note's handle, so Pause / Again / Skip fade it with the sample. Until the samples are ready, or if loading fails (a
 `console.warn`, no error), the original synthesised piano plays, unchanged. Everything goes through a compressor used as a limiter
 (threshold -10 dB, ratio 12, 3 ms attack, 0.25 s release) after the volume slider. Chrome itself prints "Failed to load resource" for a
 sample that cannot be fetched; the app cannot silence that line.

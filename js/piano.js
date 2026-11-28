@@ -42,3 +42,19 @@ export function noteEnvelope(startTime, duration) {
   const releaseStart = Math.max(attackEnd, startTime + duration);
   return { attackEnd, releaseStart, releaseEnd: releaseStart + RELEASE };
 }
+
+// A held note outlasts the 2.8 s recording (which has also faded a lot by 2 s), and a sustain drill needs the pitch
+// to stay audible to the end. So a note longer than LONG_NOTE gets a soft sustain layer (a sine on the pitch plus a quiet
+// octave) that fades in under the dying sample and ends with the same release.
+export const LONG_NOTE = 2;          // seconds: notes up to this long are the sample alone
+export const LAYER_FADE_START = 1.2; // seconds after the note starts
+export const LAYER_FADE_END = 1.6;
+export const LAYER_LEVEL = 0.018;    // sine peak: about -18 dB under the sample's level (the samples sit at -20 dBFS RMS)
+export const LAYER_OCTAVE = 1 / 3;   // the octave's share of the layer
+
+/** null for a short note, else the layer's times on the audio clock: fades in from 1.2 s to 1.6 s, releases with the sample. */
+export function sustainLayer(startTime, duration) {
+  if (!(duration > LONG_NOTE)) return null;
+  const { releaseStart, releaseEnd } = noteEnvelope(startTime, duration);
+  return { fadeStart: startTime + LAYER_FADE_START, fadeEnd: startTime + LAYER_FADE_END, level: LAYER_LEVEL, releaseStart, releaseEnd };
+}

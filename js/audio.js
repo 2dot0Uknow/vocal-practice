@@ -3,7 +3,7 @@
 
 import { midiToHz } from './music.js';
 import { classifyMicError } from './session.js';
-import { SAMPLE_MIDIS, sampleName, sampleFor, noteEnvelope } from './piano.js';
+import { SAMPLE_MIDIS, sampleName, sampleFor, noteEnvelope, sustainLayer, LAYER_OCTAVE } from './piano.js';
 
 let context = null;       // AudioContext (created on first use, closed when a session ends)
 let masterGain = null;    // piano volume
@@ -127,7 +127,38 @@ function playSampledNote(midi, startTime, duration, output, oscillators) {
   source.start(startTime);
   source.stop(times.releaseEnd + 0.02);
   const handle = { startTime, envelope, oscillators: [source], gains: [] };
-  source.onended = () => disconnectNote(handle);
+  let last = source;
+  // A held note outlasts the recording: a soft sustain layer keeps the pitch there until the note's end.
+  const layer = sustainLayer(startTime, duration);
+  if (layer) {
+    const layerGain = context.createGain();
+    layerGain.gain.setValueAtTime(0, startTime);
+    layerGain.gain.setValueAtTime(0, layer.fadeStart);
+    layerGain.gain.linearRampToValueAtTime(layer.level, layer.fadeEnd);
+    layerGain.gain.setValueAtTime(layer.level, layer.releaseStart);
+    layerGain.gain.linearRampToValueAtTime(0, layer.releaseEnd);
+    const tone = context.createBiquadFilter();
+    tone.type = 'lowpass';
+    tone.frequency.value = 2000;
+    tone.connect(layerGain).connect(output);
+    [[1, 1], [2, LAYER_OCTAVE]].forEach(([multiple, share]) => {
+      const oscillator = context.createOscillator();
+      const part = context.createGain();
+      part.gain.value = share;
+      oscillator.frequency.value = midiToHz(midi) * multiple;
+      oscillator.connect(part).connect(tone);
+      oscillator.start(layer.fadeStart);
+      oscillator.stop(layer.releaseEnd + 0.02);
+      handle.oscillators.push(oscillator);
+      handle.gains.push(part);
+      if (oscillators) oscillators.push(oscillator);
+      last = oscillator;
+    });
+    handle.gains.push(tone);
+    handle.layerGain = layerGain;
+  }
+  // Let go of the whole note when the last of its sources has ended (the layer outlasts a short recording).
+  last.onended = () => disconnectNote(handle);
   if (oscillators) oscillators.push(source);
   return handle;
 }
@@ -173,6 +204,7 @@ function disconnectNote(handle) {
     handle.oscillators.forEach((oscillator) => oscillator.disconnect());
     handle.gains.forEach((gain) => gain.disconnect());
     handle.envelope.disconnect();
+    if (handle.layerGain) handle.layerGain.disconnect();
     if (handle.lowpass) handle.lowpass.disconnect();
   } catch (error) {
     // Already disconnected.
@@ -194,6 +226,11 @@ export function cancelPianoNote(handle, now) {
     gain.cancelScheduledValues(now);
     gain.setValueAtTime(gain.value, now);
     gain.linearRampToValueAtTime(0, now + 0.03);
+    if (handle.layerGain) {
+      handle.layerGain.gain.cancelScheduledValues(now);
+      handle.layerGain.gain.setValueAtTime(handle.layerGain.gain.value, now);
+      handle.layerGain.gain.linearRampToValueAtTime(0, now + 0.03);
+    }
     handle.oscillators.forEach((oscillator) => oscillator.stop(now + 0.05));
   } catch (error) {
     // Already stopped or the context is closed.

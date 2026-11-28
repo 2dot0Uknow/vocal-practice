@@ -63,3 +63,30 @@ test('F5: a note shorter than the attack still gets its full attack before the r
   const times = noteEnvelope(5, 0.001);
   assert.ok(times.releaseStart >= times.attackEnd);
 });
+
+import { sustainLayer, LONG_NOTE } from '../js/piano.js';
+
+test('F5: notes up to 2 s are the sample alone; longer ones get a sustain layer', () => {
+  assert.equal(LONG_NOTE, 2);
+  assert.equal(sustainLayer(10, 0.6), null);
+  assert.equal(sustainLayer(10, 2), null);
+  assert.ok(sustainLayer(10, 2.01));
+});
+
+test('F5: the layer fades in from 1.2 s to 1.6 s, stays soft, and ends with the sample\'s own release', () => {
+  const layer = sustainLayer(10, 4);
+  const env = noteEnvelope(10, 4);
+  assert.ok(Math.abs(layer.fadeStart - 11.2) < 1e-9);
+  assert.ok(Math.abs(layer.fadeEnd - 11.6) < 1e-9);
+  assert.equal(layer.releaseStart, env.releaseStart);
+  assert.equal(layer.releaseEnd, env.releaseEnd);
+  assert.equal(layer.releaseEnd, 14.25);
+  // about -18 dB under the sample level (peak 1 at gain 1, RMS -20 dBFS => peak ~ -17 dBFS ~ 0.14; the layer is ~ -18 dB under that)
+  assert.ok(layer.level > 0.01 && layer.level < 0.03);
+  assert.ok(layer.fadeEnd < layer.releaseStart);
+});
+
+test('F5: an 8 s hold (4 beats at 30 bpm) is covered to its end', () => {
+  const layer = sustainLayer(0, 8);
+  assert.equal(layer.releaseEnd, 8.25);
+});

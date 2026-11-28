@@ -30,6 +30,22 @@ const EXTRA = `
     rec.compressors.push(node);
     return node;
   };
+  rec.nodes = [];
+  const realNodeStop = AudioScheduledSourceNode.prototype.stop;
+  // Oscillators and buffer sources each have their own start(): log both (when, kind, when it is due to stop, whether it has ended).
+  [OscillatorNode, AudioBufferSourceNode].forEach((Kind) => {
+    const realNodeStart = Kind.prototype.start;
+    Kind.prototype.start = function (when, ...rest) {
+      this.__info = { kind: Kind.name, start: when, stopAt: Infinity, ended: false };
+      rec.nodes.push(this.__info);
+      this.addEventListener('ended', () => { this.__info.ended = true; });
+      return realNodeStart.call(this, when, ...rest);
+    };
+  });
+  AudioScheduledSourceNode.prototype.stop = function (when) {
+    if (this.__info) this.__info.stopAt = Math.min(this.__info.stopAt, when);
+    return realNodeStop.call(this, when);
+  };
   const realWarn = console.warn;
   console.warn = (...args) => { rec.warnings.push(args.map(String).join(' ')); return realWarn.apply(console, args); };
 })();`;
@@ -147,6 +163,41 @@ async function runPolishChecks(baseUrl, { shotsDir = null } = {}) {
       await page.click('#list button[data-a=p][data-i="0"]');
       await sleep(400);
       expect(responses.length === before, 'samples should be fetched once per page, not on every practice screen');
+    });
+    await browser.close();
+  }
+
+  // ---------------------------------------------------------------- 1c. a long hold keeps sounding; Skip silences it
+  {
+    const { browser, page, errors: pageErrors } = await openApp(baseUrl, { initScript: INSTRUMENT + EXTRA, steadyTone: true, samples: true, viewport: VIEWPORT });
+    errors.push(...pageErrors);
+    await guard('long hold', async () => {
+      // One held G3 of 4 beats at 60 bpm = 4 s (like the built-in "Sustain on ng"), two rounds.
+      const LONG = { id: 'lh', name: 'Long hold', pat: '1~', vows: ['ah'], rootVow: '', start: 55, end: 56, top: false, both: false, step: 1, bpm: 60, hold: 4 };
+      await seed(page, { exercises: [LONG] });
+      await reload(page);
+      await page.click('#list button[data-a=p][data-i="0"]');
+      await waitPiano(page, 'ready');
+      const clock = () => page.evaluate(() => window.__rec.ctxs[window.__rec.ctxs.length - 1].currentTime);
+      const waitClock = (t) => page.waitForFunction((x) => window.__rec.ctxs[window.__rec.ctxs.length - 1].currentTime >= x, t, { timeout: 30000, polling: 20 });
+      await page.click('#goBtn');
+      await page.waitForFunction(() => document.getElementById('goBtn').textContent === 'Stop');
+      // Round 1: the first chord, then the held note 3 s later (cue 2 beats + 1 s gap) for 4 s.
+      await page.waitForFunction(() => window.__rec.nodes.length > 0);
+      const chordAt = await page.evaluate(() => window.__rec.nodes[0].start);
+      const noteAt = chordAt + 3;
+      await waitClock(noteAt + 3.5);
+      const alive = await page.evaluate(([from, t]) => window.__rec.nodes.filter((n) => Math.abs(n.start - from) < 0.05 || (n.start > from && n.start < from + 1.5)).filter((n) => !n.ended && n.stopAt > t).map((n) => n.kind), [noteAt, noteAt + 3.5]);
+      observations.longHold = alive;
+      expect(alive.length >= 1, `at 3.5 s into a 4 s hold something should still be sounding (saw ${JSON.stringify(alive)})`);
+      expect(alive.includes('OscillatorNode'), 'the sustain layer (oscillators) carries the end of the hold');
+      // Skip during the hold: the held note must be silent (every source of it ended) shortly after, with the audio still open.
+      await page.click('#skipBtn');
+      await sleep(600);
+      const leftover = await page.evaluate((from) => window.__rec.nodes.filter((n) => n.start >= from - 0.05 && n.start < from + 1.5 && !n.ended).length, noteAt);
+      expect(leftover === 0, `after Skip the held note and its layer should have stopped (${leftover} sources still alive)`);
+      expect(await page.evaluate(() => window.__rec.ctxs[window.__rec.ctxs.length - 1].state !== 'closed'), 'audio should still be open mid-run');
+      await page.click('#goBtn');   // Stop
     });
     await browser.close();
   }
